@@ -17,6 +17,7 @@ import {
 } from "@/lib/types";
 import {
   KU_ACCEPTANCE_LETTER_PRESET,
+  KU_FIRST_PARAGRAPH_PRESET,
   DEFAULT_INITIAL_BOXES,
   DEFAULT_INITIAL_VALUES,
 } from "@/lib/presets";
@@ -26,25 +27,24 @@ import {
   loadSavedFieldValues,
   saveFieldValuesToStorage,
   resetStorageToDefaults,
-  exportCalibrationAsJson,
-  importCalibrationFromJson,
 } from "@/lib/storage";
 import { processPDFDocument } from "@/lib/pdfProcessor";
+import { triggerPdfDownload } from "@/lib/pdf-utils";
 import {
   FileText,
-  Sliders,
   Sparkles,
   AlertTriangle,
+  Download,
+  Bug,
+  Eye,
+  Sliders,
   CheckCircle,
-  FileDown,
-  Layers,
-  ArrowRight,
 } from "lucide-react";
 
 export default function HomePage() {
   // Document state
   const [originalPdfBytes, setOriginalPdfBytes] = useState<Uint8Array | null>(null);
-  const [fileName, setFileName] = useState<string>("k.t. input.pdf");
+  const [fileName, setFileName] = useState<string>("sample-input.pdf");
   const [fileSize, setFileSize] = useState<number>(43139);
 
   // Field bounding boxes & values state
@@ -53,7 +53,10 @@ export default function HomePage() {
   const [activeFieldKey, setActiveFieldKey] = useState<string>("course");
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
 
-  // Custom font state
+  // Debug mode toggle state
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+
+  // Custom font state (defaults to authentic Times New Roman TTF)
   const [customFont, setCustomFont] = useState<CustomFontData | null>(null);
 
   // Generation state
@@ -61,21 +64,30 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [generationResult, setGenerationResult] = useState<ProcessPDFResult | null>(null);
 
-  // Navigation tab for smaller screens or workflow focus
-  const [activeTab, setActiveTab] = useState<"workspace" | "comparison">("workspace");
+  // Active view tab: "editor" | "output"
+  const [activeTab, setActiveTab] = useState<"editor" | "output">("editor");
 
   const comparisonSectionRef = useRef<HTMLDivElement>(null);
-  const fileInputImportRef = useRef<HTMLInputElement>(null);
 
   // Load saved configuration from localStorage on client mount
   useEffect(() => {
     const savedBoxes = loadSavedBoundingBoxes();
     const savedValues = loadSavedFieldValues();
-    setBoxes(savedBoxes);
-    setValues(savedValues);
+    // Verify saved boxes have valid coordinates, else use calibrated defaults
+    if (savedBoxes && savedBoxes.length === 3 && savedBoxes.find((b) => b.key === "certText" && b.y < 350)) {
+      setBoxes(savedBoxes);
+    } else {
+      setBoxes(DEFAULT_INITIAL_BOXES);
+    }
+
+    if (savedValues && savedValues.course && savedValues.studyPeriod) {
+      setValues(savedValues);
+    } else {
+      setValues(DEFAULT_INITIAL_VALUES);
+    }
   }, []);
 
-  // Automatically load the default sample PDF on first mount if none is loaded
+  // Automatically load the default sample PDF on first mount
   useEffect(() => {
     async function loadInitialSample() {
       try {
@@ -84,7 +96,7 @@ export default function HomePage() {
           const buffer = await res.arrayBuffer();
           const bytes = new Uint8Array(buffer);
           setOriginalPdfBytes(bytes);
-          setFileName("k.t. input.pdf");
+          setFileName("sample-input.pdf");
           setFileSize(bytes.byteLength);
         }
       } catch (err) {
@@ -118,50 +130,17 @@ export default function HomePage() {
     setErrorMessage(null);
   }, []);
 
-  // Export calibration settings as JSON
-  const handleExportConfig = useCallback(() => {
-    const jsonStr = exportCalibrationAsJson(boxes, values);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `achudami_calibration_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [boxes, values]);
+  // Select a preset (e.g. 2nd para vs 1st para)
+  const handleSelectPreset = useCallback((presetId: string) => {
+    const targetPreset =
+      presetId === KU_FIRST_PARAGRAPH_PRESET.id
+        ? KU_FIRST_PARAGRAPH_PRESET
+        : KU_ACCEPTANCE_LETTER_PRESET;
 
-  // Import calibration settings from JSON
-  const handleImportConfig = useCallback(() => {
-    fileInputImportRef.current?.click();
+    setBoxes(targetPreset.boxes);
+    saveBoundingBoxesToStorage(targetPreset.boxes);
+    setErrorMessage(null);
   }, []);
-
-  const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    try {
-      const text = await file.text();
-      const imported = importCalibrationFromJson(text);
-      if (imported) {
-        setBoxes(imported.boxes);
-        saveBoundingBoxesToStorage(imported.boxes);
-        if (imported.values) {
-          setValues(imported.values);
-          saveFieldValuesToStorage(imported.values);
-        }
-        setErrorMessage(null);
-      } else {
-        setErrorMessage("Invalid calibration configuration file format.");
-      }
-    } catch {
-      setErrorMessage("Failed to read calibration JSON file.");
-    } finally {
-      if (fileInputImportRef.current) {
-        fileInputImportRef.current.value = "";
-      }
-    }
-  };
 
   // Apply custom uploaded font to all fields
   const handleApplyFontToAll = useCallback(() => {
@@ -176,56 +155,70 @@ export default function HomePage() {
     });
   }, [customFont]);
 
-  // Generate modified PDF
-  const handleGenerate = async () => {
-    if (!originalPdfBytes) {
-      setErrorMessage("Please upload or load a PDF document first.");
-      return;
-    }
+  // Execute PDF generation (with debugMode flag support)
+  const executeGeneration = useCallback(
+    async (targetDebugMode: boolean): Promise<ProcessPDFResult | null> => {
+      if (!originalPdfBytes) {
+        setErrorMessage("Please upload or load a PDF document first.");
+        return null;
+      }
 
-    try {
-      setIsGenerating(true);
-      setErrorMessage(null);
+      try {
+        setIsGenerating(true);
+        setErrorMessage(null);
 
-      const result = await processPDFDocument({
-        originalPdfBytes,
-        boxes,
-        values,
-        customFontBytes: customFont ? customFont.bytes : null,
-        customFontName: customFont ? customFont.name : undefined,
-      });
+        const result = await processPDFDocument({
+          originalPdfBytes,
+          boxes,
+          values,
+          debugMode: targetDebugMode,
+          customFontBytes: customFont ? customFont.bytes : null,
+          customFontName: customFont ? customFont.name : undefined,
+        });
 
-      setGenerationResult(result);
-      setActiveTab("comparison");
+        setGenerationResult(result);
+        return result;
+      } catch (err) {
+        console.error("PDF Processing Error:", err);
+        const msg = err instanceof Error ? err.message : "Failed to process PDF document.";
+        setErrorMessage(msg);
+        return null;
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [originalPdfBytes, boxes, values, customFont]
+  );
 
-      // Smooth scroll to comparison preview
+  // Handle "Generate & Download" button click
+  const handleGenerateAndDownload = async () => {
+    const result = await executeGeneration(debugMode);
+    if (result && result.pdfBytes) {
+      triggerPdfDownload(result.pdfBytes, "output.pdf");
+      setActiveTab("output");
       setTimeout(() => {
         comparisonSectionRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "start",
         });
-      }, 100);
-    } catch (err) {
-      console.error("PDF Processing Error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to process PDF document.";
-      setErrorMessage(msg);
-    } finally {
-      setIsGenerating(false);
+      }, 150);
     }
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
-      <Header />
+  // Automatically refresh preview when debugMode changes or when initial PDF loads
+  useEffect(() => {
+    if (!originalPdfBytes) return;
 
-      {/* Hidden file input for JSON configuration import */}
-      <input
-        type="file"
-        ref={fileInputImportRef}
-        onChange={handleImportFileSelected}
-        accept=".json,application/json"
-        className="hidden"
-      />
+    const timer = setTimeout(() => {
+      executeGeneration(debugMode);
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [originalPdfBytes, debugMode, boxes, values, executeGeneration]);
+
+  return (
+    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
+      <Header />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Top Control Bar: Upload & Fast Actions */}
@@ -272,52 +265,106 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Workspace Layout */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[720px]">
-          {/* Left Column: Interactive PDF Canvas & Calibration Overlay */}
-          <div className="lg:col-span-7 flex flex-col min-h-[640px]">
-            <BoundingBoxDrawer
-              pdfBytes={originalPdfBytes}
-              boxes={boxes}
-              activeFieldKey={activeFieldKey}
-              onActiveFieldChange={(key) => setActiveFieldKey(key)}
-              onBoxChange={handleBoxChange}
-              isCalibrating={isCalibrating}
-              onToggleCalibration={() => setIsCalibrating((prev) => !prev)}
-            />
+        {/* View Tabs Bar */}
+        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("editor")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                activeTab === "editor"
+                  ? "bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-700"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Interactive Editor & Calibration</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("output")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                activeTab === "output"
+                  ? "bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-700"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Comparison & Output View</span>
+            </button>
           </div>
 
-          {/* Right Column: Values Input Form & Typography Controls */}
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="default"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 gap-1.5 font-semibold"
+              disabled={!originalPdfBytes || isGenerating}
+              onClick={handleGenerateAndDownload}
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Generate & Download output.pdf</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Workspace Layout */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[720px]">
+          {/* Left Column: Interactive PDF Canvas & Debug/Calibration Overlay */}
+          <div className="lg:col-span-7 flex flex-col min-h-[640px]">
+            {activeTab === "editor" ? (
+              <BoundingBoxDrawer
+                pdfBytes={originalPdfBytes}
+                boxes={boxes}
+                activeFieldKey={activeFieldKey}
+                onActiveFieldChange={(key) => setActiveFieldKey(key)}
+                onBoxChange={handleBoxChange}
+                isCalibrating={isCalibrating}
+                onToggleCalibration={() => setIsCalibrating((prev) => !prev)}
+                debugMode={debugMode}
+              />
+            ) : (
+              <ComparisonViewer
+                originalPdfBytes={originalPdfBytes}
+                modifiedPdfBytes={generationResult ? generationResult.pdfBytes : null}
+                modifiedBlobUrl={generationResult ? generationResult.blobUrl : null}
+                fileName="output.pdf"
+                processingTimeMs={generationResult?.processingTimeMs}
+                debugMode={debugMode}
+              />
+            )}
+          </div>
+
+          {/* Right Column: Values Input Form & Debug Controls */}
           <div className="lg:col-span-5 flex flex-col min-h-[640px]">
             <InputForm
               boxes={boxes}
               values={values}
-              activeFieldKey={activeFieldKey}
-              onActiveFieldChange={(key) => setActiveFieldKey(key)}
+              debugMode={debugMode}
+              onDebugModeChange={setDebugMode}
               onValuesChange={handleValuesChange}
               onBoxChange={handleBoxChange}
               onResetToPreset={handleResetToPreset}
-              onExportConfig={handleExportConfig}
-              onImportConfig={handleImportConfig}
-              onGenerate={handleGenerate}
+              onSelectPreset={handleSelectPreset}
+              onGenerateAndDownload={handleGenerateAndDownload}
               isGenerating={isGenerating}
               hasPdfLoaded={Boolean(originalPdfBytes)}
             />
           </div>
         </section>
 
-        {/* Comparison & Output Download Section */}
+        {/* Output & Side-by-Side Comparison Section */}
         <section ref={comparisonSectionRef} className="pt-4 min-h-[600px]">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-lg font-bold text-white">
-                Modified Document Verification & Download
+              <h2 className="text-lg font-bold text-zinc-100">
+                Document Verification & High-Fidelity Comparison
               </h2>
             </div>
             {generationResult && (
-              <Badge variant="success" className="text-xs">
-                Generated in {generationResult.processingTimeMs}ms
+              <Badge variant="default" className="text-xs font-mono">
+                Processed in {generationResult.processingTimeMs}ms
               </Badge>
             )}
           </div>
@@ -326,14 +373,15 @@ export default function HomePage() {
             originalPdfBytes={originalPdfBytes}
             modifiedPdfBytes={generationResult ? generationResult.pdfBytes : null}
             modifiedBlobUrl={generationResult ? generationResult.blobUrl : null}
-            fileName={fileName}
+            fileName="output.pdf"
             processingTimeMs={generationResult?.processingTimeMs}
+            debugMode={debugMode}
           />
         </section>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-zinc-900 bg-zinc-950 py-6 text-center text-xs text-zinc-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>
             Achudami • Client-Side Pixel-Perfect PDF Engine • Repository:{" "}
@@ -346,7 +394,7 @@ export default function HomePage() {
               munim-430/achudami
             </a>
           </p>
-          <p className="text-slate-600">Built for Vercel deployment with Next.js 14 & pdf-lib</p>
+          <p className="text-zinc-600">Built for Vercel deployment with Next.js 14 & pdf-lib</p>
         </div>
       </footer>
     </div>

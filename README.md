@@ -1,185 +1,160 @@
-# Achudami — Pixel-Perfect Client-Side PDF Text Modifier
+# Achudami — Korea University PDF Text Modifier
 
-> **Repository**: [munim-430/achudami](https://github.com/munim-430/achudami)  
-> **Deployment Target**: Vercel (100% Client-Side Processing • Zero Backend • Zero API Routes)
+> **Target Repository**: [munim-430/achudami](https://github.com/munim-430/achudami)  
+> **Environment**: Next.js 14+ (App Router), TypeScript, Tailwind CSS  
+> **Deployment Target**: Vercel (100% Client-Side Processing • No Backend • No Database)
 
-Achudami is a high-performance Next.js 14+ web application that modifies targeted text fields in uploaded PDF documents with pixel-perfect fidelity. Built with **pdf-lib**, **@pdf-lib/fontkit**, and **pdfjs-dist**, all parsing, coordinate calibration, white-out masking, and vector font redraws occur entirely in the user's browser without transferring sensitive documents to any external server.
-
----
-
-## 🎯 The "Pixel-Perfect" PDF Engine Strategy
-
-Standard PDF libraries cannot natively edit compiled binary text streams without altering original fonts, vector glyph tables, and layout kerning. Achudami solves this using the deterministic **"White-Out and Redraw"** method:
-
-```
-[ Uploaded PDF ] ──> [ PDF.js Canvas Render ] ──> [ Interactive Coordinate Calibration ]
-                             │
-                             ▼
-               [ Exact Bounding Box Selected ]
-                             │
-                             ▼
-         [ Step 1: Draw Solid White Eraser Box ]
-           page.drawRectangle({ x, y, width, height, color: rgb(1,1,1) })
-                             │
-                             ▼
-         [ Step 2: Measure & Auto-Wrap Multi-Line Text ]
-           font.widthOfTextAtSize(word, fontSize)
-                             │
-                             ▼
-         [ Step 3: Draw Vector Text with Matched Baseline & Alignment ]
-           page.drawText(line, { x, y: baseline - i * lineHeight, font, size, color })
-                             │
-                             ▼
-       [ Modified PDF Generated (Blob URL & Side-by-Side Verification) ]
-```
-
-1. **Precision Calibration Mode**: Visual canvas overlay where users can click and drag rectangles directly over original text streams. Bounding boxes track exact standard PDF point coordinates (`72 pt = 1 inch`, origin bottom-left).
-2. **Solid Vector Masking**: Erases previous text using vector rectangles with sub-pixel padding to prevent edge bleed.
-3. **Typography & Font Matching**: Uses standard PDF fonts (`TimesRoman`, `Helvetica`, `Courier`), bundled high-resolution TTF fonts (`Noto Serif`, `DejaVu Sans`), or custom user-uploaded `.ttf`/`.otf` files via `@pdf-lib/fontkit`.
-4. **Multi-Line Auto-Wrapping**: Computes text glyph metrics and wraps paragraphs cleanly into defined bounding box widths.
-5. **Side-by-Side & Toggle Diff**: Real-time visual comparison of original vs. modified documents with synchronous canvas rendering.
+Achudami is a high-precision, client-side web application that modifies targeted text fields in a highly structured PDF template (**Korea University Letter of Acceptance / 합격통지서**) with pixel-perfect fidelity, using authentic **Times New Roman typography** with exact metrics and font sizing.
 
 ---
 
-## 🚀 Quick Start & Setup
+## 🎯 The Core Problem & The Fix
 
-### Prerequisites
-- Node.js `18.18+` or `20.x`+ (`node -v`)
-- npm, pnpm, or bun
+Previous approaches failed because they relied on naive text-search algorithms or incorrect bounding boxes, accidentally modifying sensitive fields like **"Name"** and **"Date of Birth"** while missing the intended target fields.
 
-### 1. Clone & Navigate
+### The Fix
+1. **NO Naive Text Search**: The engine uses the deterministic **"Whiteout and Redraw"** technique with **strict, hardcoded PDF coordinates** (PDF points, 72 pt = 1 inch, origin bottom-left).
+2. **Untouched Fields Protected**: Leaves **Name** (`PROMI MUMTAHINA`), **Date of Birth** (`12-18-2005`), and **Document ID** (`KU KLC-2026-10-06-005`), as well as seals and Korean headers, completely untouched.
+3. **Only Modifies the 3 Target Fields**:
+   - **Course Name**: Covers `"Korea University Korean Language Education Program"`
+   - **Study Period**: Covers `"DEC.2026 – NOV.2027"`
+   - **English Certificate Text (2nd English Paragraph)**: Covers `"This is to certify that students who complete the Korean Language Program..."`
+
+---
+
+## 🔤 Font Engineering (Critical)
+
+1. **Authentic TrueType Typography**: Does **NOT** use `pdf-lib`'s built-in `StandardFonts.TimesRoman` (which lacks true Times New Roman glyph contours and metrics).
+2. **TTF Embedding Pipeline**:
+   - Fetches the authentic TrueType font file from `/public/fonts/TimesNewRoman.ttf`.
+   - Reads the font into an `ArrayBuffer` and converts to `Uint8Array`.
+   - Registers `@pdf-lib/fontkit` and embeds into the document:
+     ```ts
+     pdfDoc.registerFontkit(fontkit);
+     const embeddedFont = await pdfDoc.embedFont(fontBytes, { subset: true });
+     ```
+3. **Exact Metrics & Letter Spacing**: Uses the embedded font's exact character advance widths via `font.widthOfTextAtSize` for pixel-perfect word wrapping and baseline alignment.
+
+---
+
+## 📐 Target Fields & Hardcoded Coordinates
+
+All coordinates are in standard PDF points (Page size: 595 × 841 pt):
+
+| Target Field | PDF Coordinates (X, Y, W, H) | Font Size | Action |
+|---|---|---|---|
+| **Course Name** | `X: 145.0, Y: 546.0, W: 360.0, H: 18.0` | 10.5 pt | Solid white rectangle `rgb(1,1,1)`, redraw new course text |
+| **Study Period** | `X: 270.0, Y: 524.0, W: 150.0, H: 18.0` | 10.5 pt | Solid white rectangle `rgb(1,1,1)`, redraw new study period text |
+| **English Certificate Text** | `X: 88.0, Y: 254.0, W: 426.0, H: 64.0` | 10.5 pt | Solid white rectangle `rgb(1,1,1)`, redraw via `drawWrappedText` |
+
+### Critical Multiline Word Wrapping (`/lib/pdf-utils.ts`)
+`pdf-lib` does not wrap text natively. Achudami includes the exact `drawWrappedText` utility:
+```ts
+export function drawWrappedText(
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number,
+  font: PDFFont,
+  page: PDFPage,
+  color: RGB = rgb(0, 0, 0)
+): { lines: string[]; finalY: number }
+```
+It splits text by spaces, computes width using `font.widthOfTextAtSize`, and drops down to the next line by decrementing `Y -= fontSize * 1.2` when width exceeds `maxWidth`.
+
+---
+
+## 🛠️ Debug Mode & Calibration
+
+The UI features a **"Debug Mode"** switch:
+- When toggled **ON**, the engine overlays red border rectangles (`borderColor: rgb(1, 0, 0)`, `borderWidth: 1.5`, translucent fill) directly onto the original PDF.
+- The user can visually inspect that the red rectangles precisely envelop the target text fields without obscuring the underlying document.
+- Fine-tune controls allow adjusting `X`, `Y`, `Width`, `Height`, and `FontSize` for each field with immediate visual feedback.
+- When toggled **OFF**, production mode applies pure solid whiteouts (`rgb(1, 1, 1)`) and redraws new text.
+
+---
+
+## 🚀 Setup & Development
+
+### 1. Drop Font File
+Ensure `TimesNewRoman.ttf` is present in `/public/fonts/TimesNewRoman.ttf` before starting:
 ```bash
-git clone https://github.com/munim-430/achudami.git
-cd achudami
+# Verify the font file exists in public/fonts
+ls -lh public/fonts/TimesNewRoman.ttf
 ```
+*(An authentic TrueType Times New Roman font file is pre-bundled in `/public/fonts/TimesNewRoman.ttf`.)*
 
 ### 2. Install Dependencies
 ```bash
 npm install
 ```
 
-Required packages installed:
-- `next@14.2.15`: React framework (App Router)
-- `react@18.3.1` & `react-dom@18.3.1`: UI runtime
-- `pdf-lib@1.17.1`: Client-side PDF manipulation engine
-- `@pdf-lib/fontkit@1.1.1`: Custom TTF/OTF font parser and embedder
-- `pdfjs-dist@3.11.174`: High-precision canvas PDF renderer
-- `tailwindcss@3.4.14`: Modern responsive utility styling
-- `lucide-react`: Clean SVG iconography
-- `canvas-confetti`: Completion feedback animations
-
 ### 3. Run Development Server
 ```bash
 npm run dev
 ```
-
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
----
-
-## 📦 Production Build & Vercel Deployment
-
-### Build Locally
+### 4. Build for Production / Vercel
 ```bash
 npm run build
 npm run start
 ```
 
-### Deploy to Vercel
+---
 
-#### Option A: Manual Vercel CLI Deployment
-```bash
-# Install Vercel CLI globally if not already installed
-npm install -g vercel
+## 📱 UI/UX Flow
 
-# Deploy preview build
-vercel
-
-# Deploy directly to production
-vercel --prod
-```
-
-#### Option B: Deploy via GitHub & Vercel Dashboard
-1. Push this repository to GitHub:
-   ```bash
-   git remote add origin https://github.com/munim-430/achudami.git
-   git branch -M main
-   git push -u origin main
-   ```
-2. Go to [https://vercel.com/new](https://vercel.com/new).
-3. Import the `munim-430/achudami` repository.
-4. Framework preset will automatically detect **Next.js**.
-5. Click **Deploy**. No environment variables or database credentials required!
+1. **Dark-Mode UI**: Built with Tailwind CSS and shadcn/ui components (`bg-zinc-950`, zinc dark palette).
+2. **Upload Zone**: Accepts any input PDF or click **"Load Sample Acceptance Letter"** to load the bundled Korea University template.
+3. **Input Form**: Three pre-populated inputs:
+   - **Course Name**: `Korea University Korean Language Education Bachelor of Business Administration Program`
+   - **Study Period**: `DEC.2026 – SEP.2032`
+   - **English Certificate Text**: `This is to certify that the above-mentioned student has been accepted into the Korean Language Program of the 2026 Winter Regular Program at Korea University Korean Language Center. This is a prerequisite program designed to improve korean language proficiency, which is necessary for enrollment in the Bachelor of Business Administration program which will start from 2027-09-01`
+4. **Debug Toggle**: Instantly highlights target boxes with red borders on the PDF.
+5. **Generate & Download**: Processes the PDF in the browser and downloads `output.pdf`.
 
 ---
 
-## 📐 Pre-Calibrated Layout: Korea University Acceptance Letter
-
-The application comes pre-loaded with exact calibration coordinates and sample values matching official Korea University Korean Language Center (KU KLC) Letters of Acceptance (`k.t. input.pdf` → `K.t. output.pdf`):
-
-| Target Field | Original Value | Replacement Value | PDF Coordinates (pt) | Typography |
-| :--- | :--- | :--- | :--- | :--- |
-| **Course Name** | `Korea University Korean Language Education Program` | `Korea University Korean Language Education` | `x: 147.28, y: 546.0`<br>`w: 358.0, h: 16.0` | Times Roman, `10.2 pt`, Left |
-| **Study Period** | `DEC.2026 – NOV.2027` | `DEC.2026 – SEP.2032` | `x: 273.69, y: 525.5`<br>`w: 143.0, h: 16.0` | Times Roman, `10.2 pt`, Left |
-| **English Certificate Text** | 3-line acceptance paragraph | Multi-line acceptance paragraph with degree progression notice | `x: 88.0, y: 356.0`<br>`w: 426.0, h: 60.0` | Times Roman, `9.2 pt`, Line Height: `12.5 pt`, Auto-wrapped |
-
-*Note: You can easily calibrate any other document by clicking "Calibrate Coordinates" and dragging rectangles over desired text areas.*
-
----
-
-## 📁 Project Structure
+## 📁 Codebase Architecture
 
 ```
 achudami/
 ├── app/
-│   ├── globals.css              # Dark theme CSS variables, typography, scrollbars
-│   ├── layout.tsx               # Root Next.js layout and metadata
-│   └── page.tsx                 # Main application controller & state coordinator
+│   ├── layout.tsx            # Global metadata and dark-mode layout
+│   ├── page.tsx              # Main application page orchestrating UI/UX flow
+│   └── globals.css           # Tailwind CSS directives
 ├── components/
-│   ├── BoundingBoxDrawer.tsx    # Interactive PDF.js canvas with drag-to-calibrate handles
-│   ├── ComparisonViewer.tsx     # Side-by-side & toggle comparison with PDF download
-│   ├── FontManager.tsx          # Custom TTF/OTF font uploader via fontkit
-│   ├── Header.tsx               # Application header with GitHub repository links
-│   ├── InputForm.tsx            # Reactive text inputs, coordinate nudge controls, presets
-│   ├── UploadZone.tsx           # Drag-and-drop PDF uploader with 1-click sample loader
-│   └── ui/                      # Minimal, clean design system components
-│       ├── Badge.tsx
-│       ├── Button.tsx
-│       ├── Card.tsx
-│       ├── Input.tsx
-│       ├── Label.tsx
-│       ├── Tabs.tsx
-│       └── Textarea.tsx
+│   ├── BoundingBoxDrawer.tsx # Interactive canvas preview with debug red borders
+│   ├── ComparisonViewer.tsx  # Side-by-side verification and output.pdf downloader
+│   ├── FontManager.tsx       # Custom TTF inspection and manager
+│   ├── Header.tsx            # Dark-mode header with branding and repo link
+│   ├── InputForm.tsx         # Target fields form, debug switch, and download button
+│   ├── UploadZone.tsx        # Drag-and-drop PDF upload zone
+│   └── ui/                   # shadcn-style UI primitives (Button, Switch, Input, Card, Badge)
 ├── lib/
-│   ├── coordinateUtils.ts       # Mathematical transforms between Canvas (top-left) & PDF (bottom-left)
-│   ├── pdfProcessor.ts          # Core pdf-lib engine (white-out, word-wrap, vector draw)
-│   ├── presets.ts               # Pre-calibrated bounding box templates
-│   ├── storage.ts               # LocalStorage persistence & JSON import/export
-│   ├── types.ts                 # Strict TypeScript interfaces (Zero 'any')
-│   └── utils.ts                 # Class merging utility (clsx + tailwind-merge)
+│   ├── pdf-utils.ts          # Core drawWrappedText, KU coordinates, & modifyKoreaUniversityPdf
+│   ├── pdfProcessor.ts       # Whiteout and redraw processing pipeline
+│   ├── presets.ts            # Calibrated Korea University acceptance letter presets
+│   ├── coordinateUtils.ts    # Coordinate space conversion (Canvas <-> PDF Points)
+│   ├── storage.ts            # LocalStorage persistence for fine-tuned coordinates
+│   └── types.ts              # TypeScript interfaces and definitions
 ├── public/
-│   ├── fonts/                   # High-res bundled TTF fonts (Noto Serif, DejaVu Sans)
-│   ├── samples/                 # Sample acceptance letter input and target output
-│   └── pdf.worker.min.js        # Self-contained standalone PDF.js worker
-├── next.config.mjs              # Next.js configuration (canvas/encoding stubs)
-├── postcss.config.js            # PostCSS configuration
-├── tailwind.config.ts           # Tailwind CSS configuration
-├── tsconfig.json                # Strict TypeScript configuration
-├── vercel.json                  # Vercel deployment specification
-└── README.md                    # Project documentation
+│   ├── fonts/
+│   │   ├── TimesNewRoman.ttf # Authentic Monotype Times New Roman TTF
+│   │   └── NotoSerif-Regular.ttf
+│   ├── samples/
+│   │   └── sample-input.pdf  # Korea University Acceptance Letter template
+│   └── pdf.worker.min.js     # PDF.js worker for client-side rendering
+└── README.md
 ```
 
 ---
 
 ## 🔒 Privacy & Security
 
-Achudami processes all documents 100% locally in the browser:
-- No file is uploaded to an external server or third-party cloud.
-- No database or backend storage.
-- Safe for confidential certificates, transcripts, and identification documents.
-
----
-
-## 📄 License
-
-MIT © [munim-430](https://github.com/munim-430)
+Achudami runs **100% client-side** in your browser:
+- No file is ever uploaded to a server or external API.
+- All PDF manipulation uses WebAssembly and JavaScript via `pdf-lib` and `@pdf-lib/fontkit`.
+- Deployable to Vercel with zero serverless function overhead.

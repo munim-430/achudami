@@ -8,11 +8,13 @@ import {
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { FieldBoundingBox, ProcessPDFResult } from './types';
+import { drawWrappedText, getTimesNewRomanFontBytes } from './pdf-utils';
 
 export interface ProcessPDFInput {
   originalPdfBytes: Uint8Array | ArrayBuffer;
   boxes: FieldBoundingBox[];
   values: Record<string, string>;
+  debugMode?: boolean;
   customFontBytes?: Uint8Array | null;
   customFontName?: string;
 }
@@ -42,28 +44,43 @@ async function getBundledFontBytes(fontPath: string): Promise<ArrayBuffer | null
 
 /**
  * Resolves and embeds the appropriate font into the pdf-lib document.
+ * Follows the critical instruction:
+ * Always prefer real Times New Roman TTF embedded from /fonts/TimesNewRoman.ttf
+ * instead of naive StandardFonts.TimesRoman.
  */
 async function resolveAndEmbedFont(
   pdfDoc: PDFDocument,
   fontFamily: string,
   customFontBytes?: Uint8Array | null
 ): Promise<PDFFont> {
+  pdfDoc.registerFontkit(fontkit);
+
   // If user provided a custom uploaded font and requested 'custom'
   if (fontFamily === 'custom' && customFontBytes && customFontBytes.byteLength > 0) {
     try {
-      pdfDoc.registerFontkit(fontkit);
       return await pdfDoc.embedFont(customFontBytes, { subset: true });
     } catch (err) {
-      console.warn('Failed to embed custom user font, falling back to Times Roman:', err);
+      console.warn('Failed to embed custom user font, attempting Times New Roman TTF:', err);
     }
   }
 
-  // Bundled TTF fonts
-  if (fontFamily === 'NotoSerif') {
+  // 1. Primary: Authentic Times New Roman TTF from /public/fonts/TimesNewRoman.ttf
+  if (fontFamily === 'TimesNewRoman' || fontFamily === 'TimesRoman' || !fontFamily) {
+    const ttfBytes = await getTimesNewRomanFontBytes();
+    if (ttfBytes && ttfBytes.byteLength > 0) {
+      try {
+        return await pdfDoc.embedFont(ttfBytes, { subset: true });
+      } catch (err) {
+        console.warn('Failed to embed TimesNewRoman.ttf, attempting fallback:', err);
+      }
+    }
+  }
+
+  // 2. Fallback: NotoSerif TTF
+  if (fontFamily === 'NotoSerif' || fontFamily === 'TimesRoman' || fontFamily === 'TimesNewRoman') {
     const bytes = await getBundledFontBytes('/fonts/NotoSerif-Regular.ttf');
     if (bytes) {
       try {
-        pdfDoc.registerFontkit(fontkit);
         return await pdfDoc.embedFont(bytes, { subset: true });
       } catch (err) {
         console.warn('Failed to embed NotoSerif font, falling back:', err);
@@ -71,11 +88,11 @@ async function resolveAndEmbedFont(
     }
   }
 
+  // 3. Fallback: DejaVuSans TTF
   if (fontFamily === 'DejaVuSans') {
     const bytes = await getBundledFontBytes('/fonts/DejaVuSans.ttf');
     if (bytes) {
       try {
-        pdfDoc.registerFontkit(fontkit);
         return await pdfDoc.embedFont(bytes, { subset: true });
       } catch (err) {
         console.warn('Failed to embed DejaVuSans font, falling back:', err);
@@ -83,7 +100,7 @@ async function resolveAndEmbedFont(
     }
   }
 
-  // Standard 14 PDF fonts
+  // 4. Standard 14 PDF fonts fallback
   switch (fontFamily) {
     case 'TimesRomanBold':
       return await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
@@ -98,7 +115,6 @@ async function resolveAndEmbedFont(
     case 'Courier':
       return await pdfDoc.embedFont(StandardFonts.Courier);
     default:
-      // Default to TimesRoman as best match for formal certificates
       return await pdfDoc.embedFont(StandardFonts.TimesRoman);
   }
 }
@@ -130,55 +146,9 @@ function parseHexColor(hex: string, defaultColor: RGB = rgb(0, 0, 0)): Color {
 }
 
 /**
- * Wraps text into multiple lines such that each line fits within maxWidth.
- * Respects explicit newlines and handles word overflow gracefully.
- */
-function wrapText(
-  text: string,
-  font: PDFFont,
-  fontSize: number,
-  maxWidth: number
-): string[] {
-  const paragraphs = text.split(/\r?\n/);
-  const resultLines: string[] = [];
-
-  for (const para of paragraphs) {
-    if (!para.trim()) {
-      resultLines.push('');
-      continue;
-    }
-
-    const words = para.split(/\s+/);
-    let currentLine = '';
-
-    for (const word of words) {
-      const candidate = currentLine ? `${currentLine} ${word}` : word;
-      let candidateWidth = 0;
-      try {
-        candidateWidth = font.widthOfTextAtSize(candidate, fontSize);
-      } catch {
-        // Fallback approximate width in case of character encoding issue
-        candidateWidth = candidate.length * fontSize * 0.55;
-      }
-
-      if (candidateWidth <= maxWidth || !currentLine) {
-        currentLine = candidate;
-      } else {
-        resultLines.push(currentLine);
-        currentLine = word;
-      }
-    }
-
-    if (currentLine) {
-      resultLines.push(currentLine);
-    }
-  }
-
-  return resultLines;
-}
-
-/**
  * Executes the "White-out and Redraw" pixel-perfect pipeline on the PDF.
+ * If debugMode is true, overlays red border rectangles on the original PDF
+ * without altering underlying text, allowing visual verification of coordinates.
  */
 export async function processPDFDocument(
   options: ProcessPDFInput
@@ -205,11 +175,11 @@ export async function processPDFDocument(
     throw new Error('The PDF document contains no pages.');
   }
 
-  // Pre-load and cache fonts needed for the bounding boxes
+  // Pre-load and cache fonts needed for the target fields
   const fontMap = new Map<string, PDFFont>();
 
   for (const box of options.boxes) {
-    const fontKey = box.fontFamily || 'TimesRoman';
+    const fontKey = box.fontFamily || 'TimesNewRoman';
     if (!fontMap.has(fontKey)) {
       const font = await resolveAndEmbedFont(
         pdfDoc,
@@ -226,22 +196,43 @@ export async function processPDFDocument(
     const page = pages[pageIndex];
 
     const replacementText = options.values[box.key] ?? '';
-    const font = fontMap.get(box.fontFamily || 'TimesRoman')!;
-    const fontSize = Math.max(6, box.fontSize || 10);
+    const font = fontMap.get(box.fontFamily || 'TimesNewRoman') || fontMap.values().next().value!;
+    const fontSize = Math.max(6, box.fontSize || 10.5);
     const textColor = parseHexColor(box.colorHex || '#000000', rgb(0, 0, 0));
-    const whiteoutColor = parseHexColor(
-      box.whiteoutColorHex || '#FFFFFF',
-      rgb(1, 1, 1)
-    );
 
-    // Step 1: Solid White-out Box (Erasing original text)
-    const pad = Math.max(0, box.whiteoutPadding ?? 1.5);
+    // DEBUG MODE: Overlay red rectangle borders for calibration and visual verification
+    if (options.debugMode) {
+      page.drawRectangle({
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        borderColor: rgb(1, 0, 0),
+        borderWidth: 1.5,
+        color: rgb(1, 0, 0),
+        opacity: 0.12,
+        borderOpacity: 1.0,
+      });
+
+      page.drawText(`[DEBUG: ${box.name} (${Math.round(box.x)}, ${Math.round(box.y)})]`, {
+        x: box.x,
+        y: box.y + box.height + 2,
+        size: 7,
+        font,
+        color: rgb(0.85, 0.1, 0.1),
+      });
+
+      continue;
+    }
+
+    // PRODUCTION MODE: Solid White-out Box (Erasing original text with exact RGB 1,1,1)
+    const pad = Math.max(0, box.whiteoutPadding ?? 0);
     page.drawRectangle({
       x: box.x - pad,
       y: box.y - pad,
       width: box.width + pad * 2,
       height: box.height + pad * 2,
-      color: whiteoutColor,
+      color: rgb(1, 1, 1),
       borderWidth: 0,
     });
 
@@ -249,33 +240,37 @@ export async function processPDFDocument(
       continue;
     }
 
-    // Step 2: Calculate Lines & Word-Wrapping
-    const innerWidth = Math.max(10, box.width);
-    const lines = box.multiline
-      ? wrapText(replacementText, font, fontSize, innerWidth)
-      : replacementText.split(/\r?\n/);
-
-    const lineHeight =
-      box.lineHeight && box.lineHeight > 0
-        ? box.lineHeight
-        : fontSize * 1.35;
-
-    // Baseline calculation:
-    // Top of the box in PDF coordinate space is box.y + box.height.
-    // The first line baseline sits below the top of the box.
-    const boxTop = box.y + box.height;
-    const firstLineBaseline = boxTop - fontSize * 0.95;
-
-    // Step 3: Draw each line with exact alignment
-    for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i];
-      if (!lineText) continue;
-
+    if (box.multiline) {
+      // Use the critical drawWrappedText utility function
+      const topBaseline = box.y + box.height - fontSize * 1.1;
+      drawWrappedText(
+        replacementText,
+        box.x,
+        topBaseline,
+        box.width,
+        fontSize,
+        font,
+        page,
+        textColor as RGB
+      );
+    } else {
+      // Single line text placement
+      let lineFontSize = fontSize;
       let lineWidth = 0;
       try {
-        lineWidth = font.widthOfTextAtSize(lineText, fontSize);
+        lineWidth = font.widthOfTextAtSize(replacementText, lineFontSize);
       } catch {
-        lineWidth = lineText.length * fontSize * 0.55;
+        lineWidth = replacementText.length * lineFontSize * 0.55;
+      }
+
+      // Auto-scale slightly if text exceeds field width to avoid overlapping other columns
+      if (lineWidth > box.width) {
+        lineFontSize = Math.max(8.0, (box.width / lineWidth) * lineFontSize);
+        try {
+          lineWidth = font.widthOfTextAtSize(replacementText, lineFontSize);
+        } catch {
+          lineWidth = replacementText.length * lineFontSize * 0.55;
+        }
       }
 
       let lineX = box.x;
@@ -285,34 +280,15 @@ export async function processPDFDocument(
         lineX = box.x + Math.max(0, box.width - lineWidth);
       }
 
-      const lineY = firstLineBaseline - i * lineHeight;
+      const baselineY = box.y + (box.height - lineFontSize) / 2 + 1.5;
 
-      // Draw text safely
-      try {
-        page.drawText(lineText, {
-          x: lineX,
-          y: lineY,
-          size: fontSize,
-          font,
-          color: textColor,
-        });
-      } catch (drawErr) {
-        // Fallback for special unicode glyphs if standard font encounters WinAnsi encoding issues
-        console.warn(`Font glyph encoding warning on line "${lineText}":`, drawErr);
-        // Attempt sanitized ASCII drawing
-        const sanitized = lineText.replace(/[^\x00-\x7F]/g, ' ');
-        try {
-          page.drawText(sanitized, {
-            x: lineX,
-            y: lineY,
-            size: fontSize,
-            font,
-            color: textColor,
-          });
-        } catch {
-          // Ignore if still failing
-        }
-      }
+      page.drawText(replacementText, {
+        x: lineX,
+        y: baselineY,
+        size: lineFontSize,
+        font,
+        color: textColor,
+      });
     }
   }
 

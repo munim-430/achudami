@@ -7,12 +7,11 @@ import {
   ZoomOut,
   Maximize2,
   Crosshair,
-  Move,
   Layers,
   Info,
   ChevronLeft,
   ChevronRight,
-  Eye,
+  Bug,
   Sliders,
 } from "lucide-react";
 import { Button } from "./ui/Button";
@@ -40,6 +39,7 @@ interface BoundingBoxDrawerProps {
   onPageSizeDetermined?: (size: { width: number; height: number }) => void;
   isCalibrating: boolean;
   onToggleCalibration: () => void;
+  debugMode?: boolean;
 }
 
 type DragAction = "create" | "move" | "resize" | null;
@@ -66,11 +66,11 @@ const FIELD_COLORS: Record<string, { stroke: string; fill: string; bg: string; t
   },
 };
 
-const DEFAULT_FIELD_COLOR = {
-  stroke: "#8b5cf6",
-  fill: "rgba(139, 92, 246, 0.22)",
-  bg: "bg-purple-600",
-  text: "text-purple-400",
+const DEBUG_COLOR = {
+  stroke: "#ef4444",
+  fill: "rgba(239, 68, 68, 0.16)",
+  bg: "bg-rose-600",
+  text: "text-rose-400",
 };
 
 export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
@@ -82,6 +82,7 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
   onPageSizeDetermined,
   isCalibrating,
   onToggleCalibration,
+  debugMode = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -107,101 +108,96 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
     width: number;
     height: number;
   } | null>(null);
-
   const [initialBoxOnDrag, setInitialBoxOnDrag] = useState<FieldBoundingBox | null>(null);
 
-  // Load PDF Document
+  const activeBox = boxes.find((b) => b.key === activeFieldKey) || boxes[0];
+
+  // Load PDF Document when pdfBytes change
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadDocument() {
-      if (!pdfBytes || pdfBytes.length === 0) {
+    async function loadPdf() {
+      if (!pdfBytes) {
         setPdfDoc(null);
         return;
       }
 
       try {
-        setIsRendering(true);
-        // Copy bytes to avoid transfer issues
-        const dataCopy = new Uint8Array(pdfBytes);
         const loadingTask = pdfjsLib.getDocument({
-          data: dataCopy,
+          data: new Uint8Array(pdfBytes),
           cMapUrl: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
           cMapPacked: true,
         });
 
         const doc = await loadingTask.promise;
-        if (isCancelled) return;
-
-        setPdfDoc(doc);
-        setTotalPages(doc.numPages);
-        setCurrentPage(1);
-
-        const firstPage = await doc.getPage(1);
-        const viewport = firstPage.getViewport({ scale: 1 });
-        const size = { width: viewport.width, height: viewport.height };
-        setPagePtSize(size);
-        if (onPageSizeDetermined) {
-          onPageSizeDetermined(size);
+        if (!isCancelled) {
+          setPdfDoc(doc);
+          setTotalPages(doc.numPages);
+          setCurrentPage(1);
         }
       } catch (err) {
-        console.error("Failed to load PDF in viewer:", err);
-      } finally {
-        setIsRendering(false);
+        console.error("Failed to load PDF in BoundingBoxDrawer:", err);
       }
     }
 
-    loadDocument();
+    loadPdf();
 
     return () => {
       isCancelled = true;
     };
-  }, [pdfBytes, onPageSizeDetermined]);
+  }, [pdfBytes]);
 
-  // Render current page to Canvas
+  // Render current PDF page onto canvas
   const renderPage = useCallback(async () => {
     if (!pdfDoc || !canvasRef.current) return;
 
     try {
       setIsRendering(true);
       const page = await pdfDoc.getPage(currentPage);
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
+
+      setPagePtSize({
+        width: unscaledViewport.width,
+        height: unscaledViewport.height,
+      });
+
+      if (onPageSizeDetermined) {
+        onPageSizeDetermined({
+          width: unscaledViewport.width,
+          height: unscaledViewport.height,
+        });
+      }
+
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
-
       if (!ctx) return;
 
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
 
-      const renderContext = {
+      await page.render({
         canvasContext: ctx,
         viewport,
-      };
-
-      await page.render(renderContext).promise;
+      }).promise;
     } catch (err) {
-      console.error("Failed to render PDF page:", err);
+      console.error("Error rendering PDF page in drawer:", err);
     } finally {
       setIsRendering(false);
     }
-  }, [pdfDoc, currentPage, scale]);
+  }, [pdfDoc, currentPage, scale, onPageSizeDetermined]);
 
   useEffect(() => {
     renderPage();
   }, [renderPage]);
 
-  // Active Box
-  const activeBox = boxes.find((b) => b.key === activeFieldKey) || boxes[0];
-
-  // Mouse interaction handlers for Calibration
+  // Mouse drag events for interactive calibration
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isCalibrating || !canvasRef.current) return;
 
     const pt = getCanvasRelativePoint(e.clientX, e.clientY, canvasRef.current);
     setStartPoint(pt);
 
-    // If clicking directly on empty area, initiate new box drawing for active field
     setDragAction("create");
     setCurrentDragRect({
       x: pt.x,
@@ -257,7 +253,7 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
       });
     } else if (dragAction === "move" && initialBoxOnDrag) {
       const deltaX = (currentPt.x - startPoint.x) / scale;
-      const deltaY = -(currentPt.y - startPoint.y) / scale; // inverted Y
+      const deltaY = -(currentPt.y - startPoint.y) / scale;
 
       const newX = roundToPrecision(Math.max(0, initialBoxOnDrag.x + deltaX), 2);
       const newY = roundToPrecision(Math.max(0, initialBoxOnDrag.y + deltaY), 2);
@@ -287,11 +283,9 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
         }
       }
       if (resizeHandle.includes("n")) {
-        // Top edge in PDF is y + height. Pulling up increases height.
         newHeight = Math.max(8, initialBoxOnDrag.height + deltaY);
       }
       if (resizeHandle.includes("s")) {
-        // Bottom edge in PDF is y. Pulling down decreases y and increases height.
         const potentialHeight = initialBoxOnDrag.height - deltaY;
         if (potentialHeight >= 8) {
           newY = initialBoxOnDrag.y + deltaY;
@@ -313,7 +307,6 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
     if (!dragAction) return;
 
     if (dragAction === "create" && currentDragRect && activeBox) {
-      // Only commit if user dragged at least 5x5 pixels
       if (currentDragRect.width >= 5 && currentDragRect.height >= 5) {
         const pdfCoords = canvasToPdfCoordinates(
           currentDragRect,
@@ -341,65 +334,53 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
   const zoomOut = () => setScale((s) => Math.max(0.6, roundToPrecision(s - 0.15, 2)));
   const resetZoom = () => setScale(1.25);
 
-  const getFieldColor = (key: string) => {
-    return FIELD_COLORS[key] || DEFAULT_FIELD_COLOR;
+  const getBoxStyle = (key: string) => {
+    if (debugMode) {
+      return DEBUG_COLOR;
+    }
+    return FIELD_COLORS[key] || DEBUG_COLOR;
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950/80 rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full bg-zinc-950/80 rounded-2xl border border-zinc-800/80 overflow-hidden shadow-2xl">
       {/* Top Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md">
-        {/* Left: Mode Indicator & Toggle */}
+      <div className="py-2.5 px-4 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between flex-wrap gap-2 text-xs">
         <div className="flex items-center gap-2">
+          {debugMode && (
+            <Badge variant="destructive" className="text-[10px] font-mono gap-1">
+              <Bug className="w-3 h-3" />
+              <span>DEBUG: RED BORDERS ACTIVE</span>
+            </Badge>
+          )}
+
           <Button
             size="sm"
-            variant={isCalibrating ? "default" : "secondary"}
+            variant={isCalibrating ? "destructive" : "secondary"}
             onClick={onToggleCalibration}
-            className={cn(
-              "text-xs h-8 gap-1.5 font-medium transition-all",
-              isCalibrating
-                ? "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/25 shadow-md"
-                : "text-slate-300 hover:text-white"
-            )}
+            className="h-7 text-xs gap-1.5"
           >
-            {isCalibrating ? (
-              <>
-                <Crosshair className="w-3.5 h-3.5 animate-pulse text-indigo-200" />
-                <span>Calibration Mode Active</span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-3.5 h-3.5 text-slate-400" />
-                <span>Calibrate Coordinates</span>
-              </>
-            )}
+            <Crosshair className="w-3.5 h-3.5" />
+            <span>{isCalibrating ? "Exit Calibration" : "Calibrate Coordinates"}</span>
           </Button>
-
-          <Badge
-            variant={isCalibrating ? "default" : "secondary"}
-            className="text-[11px] font-mono py-0.5 px-2"
-          >
-            {pagePtSize.width} × {pagePtSize.height} pt
-          </Badge>
         </div>
 
-        {/* Center: Quick Active Field Selector (when in calibration) */}
-        {isCalibrating && (
-          <div className="flex items-center gap-1.5 bg-slate-950/60 p-1 rounded-lg border border-slate-800/80">
-            <span className="text-[11px] text-slate-400 px-1 font-medium">Draw for:</span>
+        {/* Target Field Switcher in Calibration or Debug Mode */}
+        {(isCalibrating || debugMode) && (
+          <div className="flex items-center gap-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800">
             {boxes.map((box) => {
-              const color = getFieldColor(box.key);
               const isActive = box.key === activeFieldKey;
+              const color = getBoxStyle(box.key);
+
               return (
                 <button
-                  key={box.id}
+                  key={box.key}
                   type="button"
                   onClick={() => onActiveFieldChange(box.key)}
                   className={cn(
-                    "px-2.5 py-0.5 text-xs rounded-md transition-all font-medium flex items-center gap-1.5 cursor-pointer",
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition flex items-center gap-1.5",
                     isActive
-                      ? "bg-slate-800 text-white shadow-sm ring-1 ring-slate-600"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                      ? "bg-zinc-800 text-white shadow-sm ring-1 ring-zinc-600"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
                   )}
                 >
                   <span
@@ -416,7 +397,7 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
         {/* Right: Zoom & Page Controls */}
         <div className="flex items-center gap-1.5">
           {totalPages > 1 && (
-            <div className="flex items-center gap-1 bg-slate-950/60 px-2 py-0.5 rounded-md border border-slate-800 text-xs text-slate-300 mr-2">
+            <div className="flex items-center gap-1 bg-zinc-950/60 px-2 py-0.5 rounded-md border border-zinc-800 text-xs text-zinc-300 mr-2">
               <button
                 type="button"
                 disabled={currentPage <= 1}
@@ -439,23 +420,23 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-0.5 bg-slate-950/60 p-0.5 rounded-lg border border-slate-800">
+          <div className="flex items-center gap-0.5 bg-zinc-950/60 p-0.5 rounded-lg border border-zinc-800">
             <Button
               size="icon"
               variant="ghost"
-              className="h-7 w-7 text-slate-400 hover:text-white"
+              className="h-7 w-7 text-zinc-400 hover:text-white"
               onClick={zoomOut}
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </Button>
-            <span className="text-[11px] font-mono text-slate-300 px-1.5 min-w-[42px] text-center">
+            <span className="text-[11px] font-mono text-zinc-300 px-1.5 min-w-[42px] text-center">
               {Math.round(scale * 100)}%
             </span>
             <Button
               size="icon"
               variant="ghost"
-              className="h-7 w-7 text-slate-400 hover:text-white"
+              className="h-7 w-7 text-zinc-400 hover:text-white"
               onClick={zoomIn}
               title="Zoom In"
             >
@@ -464,7 +445,7 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
             <Button
               size="icon"
               variant="ghost"
-              className="h-7 w-7 text-slate-400 hover:text-white"
+              className="h-7 w-7 text-zinc-400 hover:text-white"
               onClick={resetZoom}
               title="Reset Zoom"
             >
@@ -496,12 +477,12 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
       {/* PDF Canvas & Bounding Box Workspace */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto p-6 flex items-center justify-center bg-slate-950/90 relative select-none"
+        className="flex-1 overflow-auto p-6 flex items-center justify-center bg-zinc-950/90 relative select-none"
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
       >
         {!pdfBytes ? (
-          <div className="text-center p-12 text-slate-500 space-y-2">
+          <div className="text-center p-12 text-zinc-500 space-y-2">
             <Layers className="w-12 h-12 mx-auto stroke-1 opacity-40" />
             <p className="text-sm font-medium">No PDF loaded for preview</p>
             <p className="text-xs">Upload a document or load the sample acceptance letter above.</p>
@@ -518,7 +499,7 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
             <canvas
               ref={canvasRef}
               className={cn(
-                "block bg-white shadow-2xl ring-1 ring-slate-800 transition-opacity",
+                "block bg-white shadow-2xl ring-1 ring-zinc-800 transition-opacity",
                 isRendering ? "opacity-80" : "opacity-100"
               )}
             />
@@ -530,7 +511,8 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
                 .map((box) => {
                   const canvasRect = pdfToCanvasCoordinates(box, scale, pagePtSize.height);
                   const isActive = box.key === activeFieldKey;
-                  const color = getFieldColor(box.key);
+                  const color = getBoxStyle(box.key);
+                  const showOutline = debugMode || isCalibrating;
 
                   return (
                     <div
@@ -546,26 +528,27 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
                         top: `${canvasRect.y}px`,
                         width: `${canvasRect.width}px`,
                         height: `${canvasRect.height}px`,
-                        borderColor: color.stroke,
-                        backgroundColor: isCalibrating ? color.fill : "transparent",
+                        borderColor: debugMode ? "#ef4444" : color.stroke,
+                        backgroundColor: showOutline ? (debugMode ? "rgba(239, 68, 68, 0.16)" : color.fill) : "transparent",
                       }}
                       className={cn(
                         "transition-all duration-75",
                         isCalibrating ? "pointer-events-auto" : "pointer-events-none",
-                        isCalibrating
+                        showOutline
                           ? "border-2 cursor-move group"
                           : "border border-dashed opacity-40 hover:opacity-80",
-                        isActive && isCalibrating
+                        debugMode && "border-2 border-red-500 ring-1 ring-red-400/50",
+                        isActive && (isCalibrating || debugMode)
                           ? "ring-2 ring-white/70 shadow-lg z-20"
                           : "z-10"
                       )}
                     >
                       {/* Box Title Badge */}
-                      {isCalibrating && (
+                      {showOutline && (
                         <div
                           className={cn(
                             "absolute -top-6 left-0 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide whitespace-nowrap text-white shadow-md flex items-center gap-1",
-                            color.bg
+                            debugMode ? "bg-rose-600" : color.bg
                           )}
                         >
                           <span>{box.name}</span>
@@ -578,35 +561,29 @@ export const BoundingBoxDrawer: React.FC<BoundingBoxDrawerProps> = ({
                       {/* Resize Handles (Only for active box in calibration mode) */}
                       {isCalibrating && isActive && (
                         <>
-                          {/* NW */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "nw")}
-                            className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-slate-900 rounded-sm cursor-nwse-resize shadow z-30"
+                            className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-zinc-900 rounded-sm cursor-nwse-resize shadow z-30"
                           />
-                          {/* NE */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "ne")}
-                            className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-slate-900 rounded-sm cursor-nesw-resize shadow z-30"
+                            className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-zinc-900 rounded-sm cursor-nesw-resize shadow z-30"
                           />
-                          {/* SE */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "se")}
-                            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-slate-900 rounded-sm cursor-nwse-resize shadow z-30"
+                            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-zinc-900 rounded-sm cursor-nwse-resize shadow z-30"
                           />
-                          {/* SW */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "sw")}
-                            className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-slate-900 rounded-sm cursor-nesw-resize shadow z-30"
+                            className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-zinc-900 rounded-sm cursor-nesw-resize shadow z-30"
                           />
-                          {/* E */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "e")}
-                            className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-4 bg-white border border-slate-900 rounded-sm cursor-ew-resize shadow z-30"
+                            className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-4 bg-white border border-zinc-900 rounded-sm cursor-ew-resize shadow z-30"
                           />
-                          {/* W */}
                           <div
                             onMouseDown={(e) => handleStartResize(e, box, "w")}
-                            className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-4 bg-white border border-slate-900 rounded-sm cursor-ew-resize shadow z-30"
+                            className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-4 bg-white border border-zinc-900 rounded-sm cursor-ew-resize shadow z-30"
                           />
                         </>
                       )}

@@ -3,21 +3,17 @@
 import React, { useState } from "react";
 import {
   Sparkles,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  SlidersHorizontal,
-  RotateCcw,
   Download,
-  Upload,
-  Check,
-  Type,
-  Maximize2,
-  Calendar,
-  GraduationCap,
-  FileCheck2,
+  RotateCcw,
+  Bug,
+  Sliders,
   ChevronDown,
   ChevronUp,
+  FileCheck2,
+  GraduationCap,
+  Calendar,
+  Layers,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -25,22 +21,25 @@ import { Textarea } from "./ui/Textarea";
 import { Label } from "./ui/Label";
 import { Badge } from "./ui/Badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
-import { FieldBoundingBox, FieldValues, StandardFontName, TextAlignment } from "@/lib/types";
+import { Switch } from "./ui/Switch";
+import { FieldBoundingBox, FieldValues } from "@/lib/types";
 import { roundToPrecision } from "@/lib/coordinateUtils";
-import { KU_ACCEPTANCE_LETTER_PRESET } from "@/lib/presets";
+import {
+  KU_ACCEPTANCE_LETTER_PRESET,
+  KU_FIRST_PARAGRAPH_PRESET,
+} from "@/lib/presets";
 import { cn } from "@/lib/utils";
 
 interface InputFormProps {
   boxes: FieldBoundingBox[];
   values: FieldValues;
-  activeFieldKey: string;
-  onActiveFieldChange: (key: string) => void;
+  debugMode: boolean;
+  onDebugModeChange: (enabled: boolean) => void;
   onValuesChange: (newValues: FieldValues) => void;
   onBoxChange: (updatedBox: FieldBoundingBox) => void;
   onResetToPreset: () => void;
-  onExportConfig: () => void;
-  onImportConfig: () => void;
-  onGenerate: () => void;
+  onSelectPreset: (presetId: string) => void;
+  onGenerateAndDownload: () => void;
   isGenerating: boolean;
   hasPdfLoaded: boolean;
 }
@@ -48,18 +47,18 @@ interface InputFormProps {
 export const InputForm: React.FC<InputFormProps> = ({
   boxes,
   values,
-  activeFieldKey,
-  onActiveFieldChange,
+  debugMode,
+  onDebugModeChange,
   onValuesChange,
   onBoxChange,
   onResetToPreset,
-  onExportConfig,
-  onImportConfig,
-  onGenerate,
+  onSelectPreset,
+  onGenerateAndDownload,
   isGenerating,
   hasPdfLoaded,
 }) => {
-  const [expandedSettingsKey, setExpandedSettingsKey] = useState<string | null>(null);
+  const [showCoordinateSettings, setShowCoordinateSettings] = useState<boolean>(false);
+  const [activeSettingsField, setActiveSettingsField] = useState<string>("course");
 
   const handleTextChange = (key: string, val: string) => {
     onValuesChange({
@@ -70,19 +69,14 @@ export const InputForm: React.FC<InputFormProps> = ({
 
   const getBox = (key: string) => boxes.find((b) => b.key === key);
 
-  const toggleSettings = (key: string) => {
-    setExpandedSettingsKey(expandedSettingsKey === key ? null : key);
-  };
-
-  // Nudge coordinate by delta points
   const nudgeCoordinate = (
     box: FieldBoundingBox,
-    axis: "x" | "y" | "width" | "height",
+    axis: "x" | "y" | "width" | "height" | "fontSize",
     delta: number
   ) => {
     onBoxChange({
       ...box,
-      [axis]: roundToPrecision(Math.max(0, (box[axis] ?? 0) + delta), 2),
+      [axis]: roundToPrecision(Math.max(0, ((box[axis] as number) ?? 0) + delta), 2),
     });
   };
 
@@ -91,491 +85,422 @@ export const InputForm: React.FC<InputFormProps> = ({
   const certTextBox = getBox("certText");
 
   return (
-    <Card className="border-slate-800 bg-slate-900/80 backdrop-blur-md shadow-2xl flex flex-col h-full">
-      <CardHeader className="py-4 px-5">
+    <Card className="border-zinc-800 bg-zinc-900/90 backdrop-blur-md shadow-2xl flex flex-col h-full">
+      <CardHeader className="py-4 px-5 border-b border-zinc-800/80">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-white">
-              <span>Text Replacement Fields</span>
-              <Badge variant="default" className="text-[10px]">
-                Pixel-Perfect Redraw
-              </Badge>
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+              <GraduationCap className="w-5 h-5 text-indigo-400" />
+              <span>Korea University Target Fields</span>
             </CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Provide new text values to white-out original PDF streams and redraw with matched typography.
+            <CardDescription className="text-xs text-zinc-400">
+              Strict Whiteout and Redraw on Course, Study Period, & English Certificate
             </CardDescription>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onResetToPreset}
-            title="Reset fields & coordinates to default Korea University Acceptance Letter preset"
-            className="text-xs h-7 gap-1 border-slate-700 text-slate-300 hover:text-white"
+          <Badge
+            variant={debugMode ? "destructive" : "default"}
+            className="text-[11px] font-mono px-2.5 py-0.5"
           >
-            <RotateCcw className="w-3 h-3 text-slate-400" />
-            <span className="hidden sm:inline">Reset Preset</span>
-          </Button>
+            {debugMode ? "DEBUG ACTIVE" : "PRODUCTION"}
+          </Badge>
+        </div>
+
+        {/* Debug Toggle Bar */}
+        <div className="mt-3 pt-3 border-t border-zinc-800/60 flex items-center justify-between bg-zinc-950/60 p-3 rounded-lg border border-zinc-800/80">
+          <div className="flex items-center gap-2.5">
+            <Bug
+              className={cn(
+                "w-4 h-4 transition-colors",
+                debugMode ? "text-rose-400" : "text-zinc-500"
+              )}
+            />
+            <div>
+              <div className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                <span>Debug Mode</span>
+                <span className="text-[10px] text-zinc-400 font-normal">
+                  (Overlay Red Borders)
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-tight">
+                Draws red borders on original PDF to verify coordinate alignment
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={debugMode}
+              onCheckedChange={onDebugModeChange}
+              aria-label="Toggle Debug Mode"
+            />
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-5 px-5 py-4 flex-1 overflow-y-auto">
-        {/* Field 1: Course Name */}
-        <div
-          onClick={() => onActiveFieldChange("course")}
-          className={cn(
-            "p-3.5 rounded-xl border transition-all space-y-2.5",
-            activeFieldKey === "course"
-              ? "border-blue-500/80 bg-blue-950/20 ring-1 ring-blue-500/40"
-              : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
-          )}
-        >
+      <CardContent className="p-5 space-y-5 flex-1 overflow-y-auto">
+        {/* FIELD 1: Course Name */}
+        <div className="space-y-2 p-3.5 rounded-xl bg-zinc-950/50 border border-zinc-800/60 transition-all hover:border-zinc-700/80">
           <div className="flex items-center justify-between">
-            <Label htmlFor="field-course" className="text-blue-400">
-              <GraduationCap className="w-4 h-4 text-blue-400" />
-              <span>1. Course Name</span>
-            </Label>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-slate-500">
-                {courseBox ? `${courseBox.width} × ${courseBox.height} pt` : ""}
+            <Label
+              htmlFor="field-course"
+              className="text-xs font-semibold text-zinc-200 flex items-center gap-2"
+            >
+              <span className="w-5 h-5 rounded-full bg-indigo-950/80 border border-indigo-700 text-indigo-300 inline-flex items-center justify-center text-[11px] font-bold">
+                1
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSettings("course");
-                }}
-                className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition"
-                title="Fine-tune position & font"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <span>Course Name</span>
+            </Label>
+            <span className="text-[10px] text-zinc-400 font-mono">
+              [X: {courseBox?.x.toFixed(1)}pt, Y: {courseBox?.y.toFixed(1)}pt]
+            </span>
           </div>
-
+          <div className="text-[11px] text-zinc-400 italic">
+            Covers: &ldquo;Korea University Korean Language Education Program&rdquo;
+          </div>
           <Input
             id="field-course"
             value={values.course ?? ""}
             onChange={(e) => handleTextChange("course", e.target.value)}
-            placeholder="e.g. Korea University Korean Language Education..."
-            className="text-sm font-medium border-slate-700 bg-slate-950/60"
+            placeholder="Course Name..."
+            className="bg-zinc-900 border-zinc-700 text-zinc-100 text-sm focus:border-indigo-500"
           />
-
-          {/* Collapsible Fine-Tuning Drawer */}
-          {expandedSettingsKey === "course" && courseBox && (
-            <FieldDetailControls
-              box={courseBox}
-              onBoxChange={onBoxChange}
-              onNudge={(axis, delta) => nudgeCoordinate(courseBox, axis, delta)}
-            />
-          )}
         </div>
 
-        {/* Field 2: Study Period */}
-        <div
-          onClick={() => onActiveFieldChange("studyPeriod")}
-          className={cn(
-            "p-3.5 rounded-xl border transition-all space-y-2.5",
-            activeFieldKey === "studyPeriod"
-              ? "border-amber-500/80 bg-amber-950/20 ring-1 ring-amber-500/40"
-              : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
-          )}
-        >
+        {/* FIELD 2: Study Period */}
+        <div className="space-y-2 p-3.5 rounded-xl bg-zinc-950/50 border border-zinc-800/60 transition-all hover:border-zinc-700/80">
           <div className="flex items-center justify-between">
-            <Label htmlFor="field-study-period" className="text-amber-400">
-              <Calendar className="w-4 h-4 text-amber-400" />
-              <span>2. Study Period</span>
-            </Label>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-slate-500">
-                {studyPeriodBox ? `${studyPeriodBox.width} × ${studyPeriodBox.height} pt` : ""}
+            <Label
+              htmlFor="field-study-period"
+              className="text-xs font-semibold text-zinc-200 flex items-center gap-2"
+            >
+              <span className="w-5 h-5 rounded-full bg-indigo-950/80 border border-indigo-700 text-indigo-300 inline-flex items-center justify-center text-[11px] font-bold">
+                2
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSettings("studyPeriod");
-                }}
-                className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition"
-                title="Fine-tune position & font"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <span>Study Period</span>
+            </Label>
+            <span className="text-[10px] text-zinc-400 font-mono">
+              [X: {studyPeriodBox?.x.toFixed(1)}pt, Y: {studyPeriodBox?.y.toFixed(1)}pt]
+            </span>
           </div>
-
+          <div className="text-[11px] text-zinc-400 italic">
+            Covers: &ldquo;DEC.2026 – NOV.2027&rdquo;
+          </div>
           <Input
             id="field-study-period"
             value={values.studyPeriod ?? ""}
             onChange={(e) => handleTextChange("studyPeriod", e.target.value)}
             placeholder="e.g. DEC.2026 – SEP.2032"
-            className="text-sm font-medium border-slate-700 bg-slate-950/60"
+            className="bg-zinc-900 border-zinc-700 text-zinc-100 text-sm focus:border-indigo-500"
           />
-
-          {expandedSettingsKey === "studyPeriod" && studyPeriodBox && (
-            <FieldDetailControls
-              box={studyPeriodBox}
-              onBoxChange={onBoxChange}
-              onNudge={(axis, delta) => nudgeCoordinate(studyPeriodBox, axis, delta)}
-            />
-          )}
         </div>
 
-        {/* Field 3: English Certificate Text */}
-        <div
-          onClick={() => onActiveFieldChange("certText")}
-          className={cn(
-            "p-3.5 rounded-xl border transition-all space-y-2.5",
-            activeFieldKey === "certText"
-              ? "border-emerald-500/80 bg-emerald-950/20 ring-1 ring-emerald-500/40"
-              : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
-          )}
-        >
+        {/* FIELD 3: English Certificate Text */}
+        <div className="space-y-2 p-3.5 rounded-xl bg-zinc-950/50 border border-zinc-800/60 transition-all hover:border-zinc-700/80">
           <div className="flex items-center justify-between">
-            <Label htmlFor="field-cert-text" className="text-emerald-400">
-              <FileCheck2 className="w-4 h-4 text-emerald-400" />
-              <span>3. English Certificate Text (Multi-Line Auto-Wrap)</span>
-            </Label>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-slate-500">
-                {certTextBox ? `${certTextBox.width} × ${certTextBox.height} pt` : ""}
+            <Label
+              htmlFor="field-cert-text"
+              className="text-xs font-semibold text-zinc-200 flex items-center gap-2"
+            >
+              <span className="w-5 h-5 rounded-full bg-indigo-950/80 border border-indigo-700 text-indigo-300 inline-flex items-center justify-center text-[11px] font-bold">
+                3
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSettings("certText");
-                }}
-                className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition"
-                title="Fine-tune position & font"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <span>English Certificate Text</span>
+              <Badge variant="outline" className="text-[10px] text-indigo-400 border-indigo-800/60">
+                Multiline Wrapped
+              </Badge>
+            </Label>
+            <span className="text-[10px] text-zinc-400 font-mono">
+              [X: {certTextBox?.x.toFixed(1)}pt, Y: {certTextBox?.y.toFixed(1)}pt]
+            </span>
           </div>
-
+          <div className="text-[11px] text-zinc-400 italic">
+            Covers: &ldquo;This is to certify that students who complete...&rdquo;
+          </div>
           <Textarea
             id="field-cert-text"
             rows={5}
             value={values.certText ?? ""}
             onChange={(e) => handleTextChange("certText", e.target.value)}
-            placeholder="Enter certificate verification paragraph. Automatically wraps to bounding box width..."
-            className="text-xs leading-relaxed border-slate-700 bg-slate-950/60 font-sans"
+            placeholder="Full certificate replacement paragraph..."
+            className="bg-zinc-900 border-zinc-700 text-zinc-100 text-xs leading-relaxed focus:border-indigo-500 font-serif"
           />
+        </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-            <span>
-              Length: {values.certText?.length ?? 0} characters (~
-              {Math.ceil((values.certText?.length ?? 0) / 70)} lines)
+        {/* FINE-TUNE COORDINATES SECTION (Accessible anytime or in debug mode) */}
+        <div className="pt-2 border-t border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setShowCoordinateSettings(!showCoordinateSettings)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-950/40 rounded-lg border border-zinc-800/60 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Fine-Tune Target Coordinates (PDF Points)</span>
             </span>
-            <span className="text-emerald-400/80">Auto word-wrapped in PDF engine</span>
-          </div>
+            {showCoordinateSettings ? (
+              <ChevronUp className="w-4 h-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-zinc-500" />
+            )}
+          </button>
 
-          {expandedSettingsKey === "certText" && certTextBox && (
-            <FieldDetailControls
-              box={certTextBox}
-              onBoxChange={onBoxChange}
-              onNudge={(axis, delta) => nudgeCoordinate(certTextBox, axis, delta)}
-            />
+          {showCoordinateSettings && (
+            <div className="mt-3 p-3.5 bg-zinc-950/80 rounded-xl border border-zinc-800 space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                <span className="text-xs text-zinc-400">Target Field:</span>
+                <div className="flex gap-1">
+                  {(["course", "studyPeriod", "certText"] as const).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActiveSettingsField(key)}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] rounded-md transition-colors",
+                        activeSettingsField === key
+                          ? "bg-indigo-600 text-white font-medium"
+                          : "bg-zinc-800/80 text-zinc-400 hover:text-zinc-200"
+                      )}
+                    >
+                      {key === "course"
+                        ? "Course"
+                        : key === "studyPeriod"
+                        ? "Period"
+                        : "Certificate"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active Box Coordinates Editor */}
+              {(() => {
+                const curBox = getBox(activeSettingsField);
+                if (!curBox) return null;
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <Label className="text-[11px] text-zinc-400">X (Points from left)</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "x", -1)}
+                          >
+                            -
+                          </Button>
+                          <Input
+                            type="number"
+                            step="0.5"
+                            value={curBox.x}
+                            onChange={(e) =>
+                              onBoxChange({ ...curBox, x: parseFloat(e.target.value) || 0 })
+                            }
+                            className="h-7 text-xs px-2 text-center bg-zinc-900 border-zinc-700"
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "x", 1)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-[11px] text-zinc-400">Y (Points from bottom)</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "y", -1)}
+                          >
+                            -
+                          </Button>
+                          <Input
+                            type="number"
+                            step="0.5"
+                            value={curBox.y}
+                            onChange={(e) =>
+                              onBoxChange({ ...curBox, y: parseFloat(e.target.value) || 0 })
+                            }
+                            className="h-7 text-xs px-2 text-center bg-zinc-900 border-zinc-700"
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "y", 1)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-[11px] text-zinc-400">Width (Points)</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "width", -1)}
+                          >
+                            -
+                          </Button>
+                          <Input
+                            type="number"
+                            step="1"
+                            value={curBox.width}
+                            onChange={(e) =>
+                              onBoxChange({ ...curBox, width: parseFloat(e.target.value) || 0 })
+                            }
+                            className="h-7 text-xs px-2 text-center bg-zinc-900 border-zinc-700"
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "width", 1)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-[11px] text-zinc-400">Height (Points)</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "height", -1)}
+                          >
+                            -
+                          </Button>
+                          <Input
+                            type="number"
+                            step="1"
+                            value={curBox.height}
+                            onChange={(e) =>
+                              onBoxChange({ ...curBox, height: parseFloat(e.target.value) || 0 })
+                            }
+                            className="h-7 text-xs px-2 text-center bg-zinc-900 border-zinc-700"
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 w-7 p-0"
+                            onClick={() => nudgeCoordinate(curBox, "height", 1)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <Label className="text-[11px] text-zinc-400">Font Size (pt)</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="6"
+                          max="24"
+                          value={curBox.fontSize}
+                          onChange={(e) =>
+                            onBoxChange({
+                              ...curBox,
+                              fontSize: parseFloat(e.target.value) || 10.5,
+                            })
+                          }
+                          className="h-7 w-16 text-xs text-center bg-zinc-900 border-zinc-700"
+                        />
+                        <span className="text-[10px] text-zinc-400">pt</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Reset to Default Preset */}
+              <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs text-zinc-400 hover:text-zinc-200"
+                  onClick={onResetToPreset}
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                  Reset to Defaults
+                </Button>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[11px] text-zinc-400"
+                    onClick={() => onSelectPreset(KU_FIRST_PARAGRAPH_PRESET.id)}
+                  >
+                    1st Para Preset
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[11px] text-indigo-400"
+                    onClick={() => onSelectPreset(KU_ACCEPTANCE_LETTER_PRESET.id)}
+                  >
+                    2nd Para Preset
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Configuration import/export action buttons */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-          <span className="text-slate-500 text-[11px]">Calibration Config:</span>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onExportConfig}
-              className="text-[11px] h-7 px-2 text-slate-400 hover:text-slate-200"
-            >
-              <Download className="w-3 h-3 mr-1" />
-              Export JSON
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onImportConfig}
-              className="text-[11px] h-7 px-2 text-slate-400 hover:text-slate-200"
-            >
-              <Upload className="w-3 h-3 mr-1" />
-              Import JSON
-            </Button>
+        {/* SAFEGUARD NOTE */}
+        <div className="p-3 bg-zinc-950/70 border border-zinc-800/80 rounded-xl text-xs text-zinc-400 space-y-1">
+          <div className="flex items-center gap-1.5 text-zinc-300 font-medium text-[11px]">
+            <FileCheck2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Untouched Fields Protected</span>
           </div>
+          <p className="text-[11px] leading-relaxed">
+            Name (<span className="text-zinc-300">PROMI MUMTAHINA</span>), Date of Birth (
+            <span className="text-zinc-300">12-18-2005</span>), and Document ID (
+            <span className="text-zinc-300">KU KLC-2026-10-06-005</span>) remain completely untouched.
+          </p>
+        </div>
+
+        {/* PRIMARY GENERATE & DOWNLOAD BUTTON */}
+        <div className="pt-2">
+          <Button
+            size="lg"
+            variant="default"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2"
+            disabled={!hasPdfLoaded || isGenerating}
+            onClick={onGenerateAndDownload}
+          >
+            {isGenerating ? (
+              <>
+                <Sparkles className="w-4 h-4 animate-spin text-white" />
+                <span>Processing Pixel-Perfect PDF...</span>
+              </>
+            ) : debugMode ? (
+              <>
+                <Bug className="w-4 h-4 text-white" />
+                <span>Download Debug PDF (output.pdf)</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-white" />
+                <span>Generate & Download output.pdf</span>
+              </>
+            )}
+          </Button>
         </div>
       </CardContent>
-
-      {/* Footer Generate CTA */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2">
-        <Button
-          size="lg"
-          onClick={onGenerate}
-          disabled={!hasPdfLoaded || isGenerating}
-          className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-indigo-500/25 shadow-lg text-white font-semibold h-11 transition-all duration-200"
-        >
-          {isGenerating ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>Applying White-out & Redraw...</span>
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-200" />
-              <span>Generate & Preview Modified PDF</span>
-            </span>
-          )}
-        </Button>
-        {!hasPdfLoaded && (
-          <p className="text-[11px] text-center text-amber-400/80">
-            Upload a PDF or load the sample template to enable generation.
-          </p>
-        )}
-      </div>
     </Card>
-  );
-};
-
-interface FieldDetailControlsProps {
-  box: FieldBoundingBox;
-  onBoxChange: (box: FieldBoundingBox) => void;
-  onNudge: (axis: "x" | "y" | "width" | "height", delta: number) => void;
-}
-
-const FieldDetailControls: React.FC<FieldDetailControlsProps> = ({
-  box,
-  onBoxChange,
-  onNudge,
-}) => {
-  return (
-    <div className="pt-3 border-t border-slate-800/80 space-y-3 bg-slate-950/70 p-3 rounded-lg text-xs">
-      <div className="flex items-center justify-between text-slate-300 font-medium">
-        <span>Typography & Bounding Box Coordinates</span>
-        <Badge variant="secondary" className="text-[10px] font-mono">
-          Page {box.pageNumber}
-        </Badge>
-      </div>
-
-      {/* Font Family & Size */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="text-[11px] text-slate-400 mb-1">Font Family</Label>
-          <select
-            value={box.fontFamily}
-            onChange={(e) =>
-              onBoxChange({
-                ...box,
-                fontFamily: e.target.value as StandardFontName,
-              })
-            }
-            className="w-full h-8 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="TimesRoman">Times Roman (Serif - Cert Style)</option>
-            <option value="TimesRomanBold">Times Roman Bold</option>
-            <option value="NotoSerif">Noto Serif (Bundled TTF)</option>
-            <option value="Helvetica">Helvetica (Sans-Serif)</option>
-            <option value="HelveticaBold">Helvetica Bold</option>
-            <option value="DejaVuSans">DejaVu Sans (Bundled TTF)</option>
-            <option value="Courier">Courier (Monospace)</option>
-            <option value="custom">Custom Uploaded Font</option>
-          </select>
-        </div>
-
-        <div>
-          <Label className="text-[11px] text-slate-400 mb-1">Font Size (pt)</Label>
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="number"
-              step="0.1"
-              value={box.fontSize}
-              onChange={(e) =>
-                onBoxChange({
-                  ...box,
-                  fontSize: parseFloat(e.target.value) || 10,
-                })
-              }
-              className="h-8 text-xs font-mono"
-            />
-            <div className="flex gap-0.5">
-              <button
-                type="button"
-                onClick={() =>
-                  onBoxChange({ ...box, fontSize: roundToPrecision(box.fontSize - 0.5, 1) })
-                }
-                className="w-6 h-8 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center justify-center font-bold"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  onBoxChange({ ...box, fontSize: roundToPrecision(box.fontSize + 0.5, 1) })
-                }
-                className="w-6 h-8 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center justify-center font-bold"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Alignment & Line Spacing */}
-      <div className="grid grid-cols-2 gap-3 items-center">
-        <div>
-          <Label className="text-[11px] text-slate-400 mb-1">Text Alignment</Label>
-          <div className="flex rounded-md border border-slate-700 bg-slate-900 p-0.5">
-            <button
-              type="button"
-              onClick={() => onBoxChange({ ...box, alignment: "left" })}
-              className={cn(
-                "flex-1 py-1 rounded text-center transition flex justify-center items-center",
-                box.alignment === "left"
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white"
-              )}
-            >
-              <AlignLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onBoxChange({ ...box, alignment: "center" })}
-              className={cn(
-                "flex-1 py-1 rounded text-center transition flex justify-center items-center",
-                box.alignment === "center"
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white"
-              )}
-            >
-              <AlignCenter className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onBoxChange({ ...box, alignment: "right" })}
-              className={cn(
-                "flex-1 py-1 rounded text-center transition flex justify-center items-center",
-                box.alignment === "right"
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white"
-              )}
-            >
-              <AlignRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {box.multiline && (
-          <div>
-            <Label className="text-[11px] text-slate-400 mb-1">Line Height (pt)</Label>
-            <Input
-              type="number"
-              step="0.5"
-              value={box.lineHeight ?? roundToPrecision(box.fontSize * 1.35, 1)}
-              onChange={(e) =>
-                onBoxChange({
-                  ...box,
-                  lineHeight: parseFloat(e.target.value) || 14,
-                })
-              }
-              className="h-8 text-xs font-mono"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Coordinate Nudging & Precision Values */}
-      <div>
-        <Label className="text-[11px] text-slate-400 mb-1">
-          PDF Coordinates (origin bottom-left, pt)
-        </Label>
-        <div className="grid grid-cols-4 gap-1.5 font-mono text-[11px]">
-          <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
-            <span className="text-slate-500 block text-[9px]">X (Left)</span>
-            <span className="text-slate-200">{box.x}</span>
-            <div className="flex justify-center gap-1 mt-1">
-              <button
-                type="button"
-                onClick={() => onNudge("x", -0.5)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                onClick={() => onNudge("x", 0.5)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
-            <span className="text-slate-500 block text-[9px]">Y (Bottom)</span>
-            <span className="text-slate-200">{box.y}</span>
-            <div className="flex justify-center gap-1 mt-1">
-              <button
-                type="button"
-                onClick={() => onNudge("y", -0.5)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                onClick={() => onNudge("y", 0.5)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
-            <span className="text-slate-500 block text-[9px]">Width</span>
-            <span className="text-slate-200">{box.width}</span>
-            <div className="flex justify-center gap-1 mt-1">
-              <button
-                type="button"
-                onClick={() => onNudge("width", -1)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                onClick={() => onNudge("width", 1)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded p-1.5 text-center">
-            <span className="text-slate-500 block text-[9px]">Height</span>
-            <span className="text-slate-200">{box.height}</span>
-            <div className="flex justify-center gap-1 mt-1">
-              <button
-                type="button"
-                onClick={() => onNudge("height", -1)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                onClick={() => onNudge("height", 1)}
-                className="px-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 };
