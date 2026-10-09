@@ -36,6 +36,26 @@ export interface FieldValues {
   [key: string]: string;
 }
 
+export interface DocumentTemplate {
+  id: string;
+  name: string;
+  universityName?: string;
+  description?: string;
+  documentType?: string;
+  textMarkers?: string[];
+  pageSize: {
+    width: number;
+    height: number;
+  };
+  boxes: FieldBoundingBox[];
+  defaultValues: FieldValues;
+  isBuiltIn?: boolean;
+  sampleInputPath?: string;
+  referenceOutputPath?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CalibrationPreset {
   id: string;
   name: string;
@@ -47,6 +67,8 @@ export interface CalibrationPreset {
   };
   boxes: FieldBoundingBox[];
   defaultValues: FieldValues;
+  textMarkers?: string[];
+  isBuiltIn?: boolean;
 }
 
 export interface PDFDocumentMeta {

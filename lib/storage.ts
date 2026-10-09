@@ -1,4 +1,4 @@
-import { FieldBoundingBox, FieldValues } from './types';
+import { FieldBoundingBox, FieldValues, CalibrationPreset } from './types';
 import { DEFAULT_INITIAL_BOXES, DEFAULT_INITIAL_VALUES } from './presets';
 
 const STORAGE_KEY_BOXES = 'achudami_field_bounding_boxes_v1';
@@ -106,3 +106,92 @@ export function importCalibrationFromJson(jsonString: string): {
   }
   return null;
 }
+
+// --- DOCUMENT TEMPLATE STORAGE ---
+const STORAGE_KEY_TEMPLATES = 'achudami_custom_templates_v1';
+
+export function loadCustomTemplates(): CalibrationPreset[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_TEMPLATES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch (err) {
+    console.error('Failed to load custom templates from localStorage:', err);
+  }
+  return [];
+}
+
+export function saveCustomTemplate(template: CalibrationPreset): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadCustomTemplates();
+    const index = existing.findIndex((t) => t.id === template.id);
+    const updated = {
+      ...template,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (index >= 0) {
+      existing[index] = updated;
+    } else {
+      existing.push(updated);
+    }
+
+    window.localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(existing));
+  } catch (err) {
+    console.error('Failed to save custom template to localStorage:', err);
+  }
+}
+
+export function deleteCustomTemplate(templateId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadCustomTemplates();
+    const filtered = existing.filter((t) => t.id !== templateId);
+    window.localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(filtered));
+  } catch (err) {
+    console.error('Failed to delete custom template from localStorage:', err);
+  }
+}
+
+export function exportTemplateAsJson(template: CalibrationPreset): string {
+  return JSON.stringify(
+    {
+      app: 'achudami',
+      format: 'achudami-template-v1',
+      exportedAt: new Date().toISOString(),
+      template,
+    },
+    null,
+    2
+  );
+}
+
+export function importTemplateFromJson(jsonString: string): CalibrationPreset | null {
+  try {
+    const data = JSON.parse(jsonString);
+    const candidate: CalibrationPreset = data.template || data;
+
+    if (
+      candidate &&
+      typeof candidate.name === 'string' &&
+      Array.isArray(candidate.boxes) &&
+      candidate.boxes.length > 0
+    ) {
+      if (!candidate.id) {
+        candidate.id = `imported-${Date.now()}`;
+      }
+      return candidate;
+    }
+  } catch (err) {
+    console.error('Failed to import template from JSON:', err);
+  }
+  return null;
+}
+

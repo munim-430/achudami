@@ -168,3 +168,88 @@ export const ALL_PRESETS: CalibrationPreset[] = [
   KU_ACCEPTANCE_LETTER_PRESET,
   KU_FIRST_PARAGRAPH_PRESET,
 ];
+
+export const DEFAULT_STARTER_TEMPLATE: CalibrationPreset = {
+  id: 'custom-template',
+  name: 'Custom University Acceptance Template',
+  description: 'Custom 3-field template: Course Name, Study Period, and Certificate Paragraph.',
+  documentType: 'Acceptance Certificate',
+  pageSize: {
+    width: 595,
+    height: 841,
+  },
+  boxes: [
+    {
+      id: 'field-course',
+      name: 'Course Name',
+      key: 'course',
+      pageNumber: 1,
+      x: 140.0,
+      y: 545.0,
+      width: 360.0,
+      height: 20.0,
+      fontSize: 10.5,
+      fontFamily: 'TimesRoman',
+      alignment: 'left',
+      colorHex: '#000000',
+      multiline: false,
+      whiteoutPadding: 1,
+      whiteoutColorHex: '#FFFFFF',
+    },
+    {
+      id: 'field-study-period',
+      name: 'Study Period',
+      key: 'studyPeriod',
+      pageNumber: 1,
+      x: 250.0,
+      y: 520.0,
+      width: 180.0,
+      height: 18.0,
+      fontSize: 10.5,
+      fontFamily: 'TimesRoman',
+      alignment: 'left',
+      colorHex: '#000000',
+      multiline: false,
+      whiteoutPadding: 1,
+      whiteoutColorHex: '#FFFFFF',
+    },
+    {
+      id: 'field-cert-text',
+      name: 'Certificate Paragraph',
+      key: 'certText',
+      pageNumber: 1,
+      x: 88.0,
+      y: 260.0,
+      width: 420.0,
+      height: 70.0,
+      fontSize: 10.5,
+      lineHeight: 13.0,
+      fontFamily: 'TimesRoman',
+      alignment: 'left',
+      colorHex: '#000000',
+      multiline: true,
+      whiteoutPadding: 1,
+      whiteoutColorHex: '#FFFFFF',
+    },
+  ],
+  defaultValues: {
+    course: 'Korean Language Course / Bachelor Program',
+    studyPeriod: '2026.12.02 – 2032.09.01',
+    certText:
+      'This is to certify that the above-mentioned student has been admitted to the designated academic program. This prerequisite program is designed to fulfill admission requirements starting from 2027.',
+  },
+};
+
+export function createNewTemplateDraft(name: string = 'Untitled Custom Template'): CalibrationPreset {
+  const timestamp = Date.now();
+  return {
+    id: `template-${timestamp}`,
+    name,
+    description: 'Custom university template for Course, Period, and Certificate text.',
+    documentType: 'Admission Certificate',
+    pageSize: { width: 595, height: 841 },
+    boxes: DEFAULT_STARTER_TEMPLATE.boxes.map((b) => ({ ...b })),
+    defaultValues: { ...DEFAULT_STARTER_TEMPLATE.defaultValues },
+    textMarkers: [],
+  };
+}

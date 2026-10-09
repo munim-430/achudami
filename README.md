@@ -6,9 +6,15 @@
 
 Achudami is an elite client-side web application engineered to modify specific text fields in highly structured university acceptance documents with pixel-perfect typographic fidelity using authentic **Times New Roman TrueType typography**.
 
-It supports isolated, modular handlers for:
-1. **Hanyang University** — Confirmation of Acceptance (*입학확인서*)
-2. **Korea University** — Letter of Acceptance (*합격통지서*)
+It supports:
+1. **Interactive 3-Field Template Editor**: Visual drag-and-resize bounding box calibration directly on any uploaded PDF for:
+   - **Course Name** (`course` / `지원과정 Applying Course`)
+   - **Study Period** (`studyPeriod` / `교육기간 Education Period`)
+   - **Certificate Text** (`certText` / `English Certificate Paragraph`)
+   With numeric coordinate nudging (+/- 1pt, +/- 5pt), typography settings, LocalStorage persistence, and JSON Export/Import.
+2. **Hanyang University** — Confirmation of Acceptance (*입학확인서*)
+3. **Korea University** — Letter of Acceptance (*합격통지서*)
+4. **Custom University Templates** — Create, calibrate, save, and auto-detect templates for any university admission document!
 
 ---
 
