@@ -91,7 +91,7 @@ export function parseExcelFile(arrayBuffer: ArrayBuffer): StudentRecord[] {
       applicantName,
       dobFormatted,
       applyingCourse: courseName,
-      degreeProgram: "Bachelor of Business Administration",
+      degreeProgram: String(row["Degree Program"] || row["Degree"] || "Bachelor of Business Administration").trim(),
       educationPeriod: eduPeriod,
       koreanSemesterYear: semYear,
       englishSemesterYear: semYear,

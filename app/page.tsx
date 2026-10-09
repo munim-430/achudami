@@ -54,7 +54,7 @@ export default function HomePage() {
   // Verify auth session on client mount
   useEffect(() => {
     try {
-      const isUnlocked = sessionStorage.getItem("achudami_auth") === "unlocked";
+      const isUnlocked = sessionStorage.getItem("saemur_auth") === "unlocked";
       setIsAuthenticated(isUnlocked);
     } catch {
       setIsAuthenticated(false);
@@ -92,7 +92,7 @@ export default function HomePage() {
 
   const handleLock = () => {
     try {
-      sessionStorage.removeItem("achudami_auth");
+      sessionStorage.removeItem("saemur_auth");
     } catch {
       // Ignore
     }
@@ -372,7 +372,7 @@ export default function HomePage() {
             </span>
           </div>
           <div>
-            <span>HQ: Sobhanbag, Dhanmondi • Keystone Overseas</span>
+            <span>Author: Saemur Rahman</span>
           </div>
         </div>
       </main>

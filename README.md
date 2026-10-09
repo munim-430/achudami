@@ -1,4 +1,6 @@
-# Achudami — Pixel-Perfect University Acceptance Engine & Web Portal
+# Hanyang Acceptance Letter Engine & Web Portal
+
+**Author:** Saemur Rahman
 
 Production-grade automated certificate generation engine engineered for **Hanyang University Confirmation of Acceptance (합격증)** with **100% vector fidelity, zero visual drift, and client-side web deployment**.
 
@@ -43,9 +45,9 @@ The web portal runs entirely in the user's browser using `pdf-lib` + `@pdf-lib/f
 - **Batch 1-Click ZIP Download:** Generates all 60 certificates client-side in seconds and zips them into a single archive.
 
 ### Deploy to Vercel (Manual or Git)
-1. Fork or push this repository to GitHub (`munim-430/achudami`).
+1. Fork or push this repository to GitHub.
 2. Log into [Vercel](https://vercel.com) and click **"Add New Project"**.
-3. Import the `achudami` repository.
+3. Import the repository.
 4. Leave framework preset as **Next.js** (root directory: `/`).
 5. Click **"Deploy"**. The site will build statically and deploy globally across Vercel Edge CDN with zero configuration needed.
 
@@ -95,7 +97,7 @@ python verify_diff.py \
 ## 📁 Repository Structure
 
 ```
-achudami/
+hanyang-certificate-engine/
 ├── app/
 │   ├── layout.tsx                  # Next.js root layout
 │   ├── page.tsx                    # Main portal dashboard

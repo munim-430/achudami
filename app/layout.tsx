@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Achudami — Automated University Certificate Generation Portal",
+  title: "Automated University Certificate Generation Portal — by Saemur Rahman",
   description:
-    "Pixel-perfect automated certificate generation engine for university acceptance letters with 100% vector fidelity and zero visual drift.",
+    "Pixel-perfect automated certificate generation engine for university acceptance letters with 100% vector fidelity and zero visual drift. Authored by Saemur Rahman.",
+  authors: [{ name: "Saemur Rahman" }],
 };
 
 export default function RootLayout({

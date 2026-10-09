@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
-import { FileSpreadsheet, FileText, Upload, Sparkles, CheckCircle2 } from "lucide-react";
+import { FileSpreadsheet, FileText, Upload, Sparkles, CheckCircle2, Download } from "lucide-react";
 
 interface FileUploadZoneProps {
   onExcelLoaded: (buffer: ArrayBuffer, fileName: string) => void;
@@ -79,21 +79,33 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
         </div>
 
         <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/80">
-          <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[200px]">
+          <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[150px]">
             {excelFileName || "No file selected"}
           </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onLoadSampleData();
-            }}
-            disabled={isLoading}
-            className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>Load 60-Student Sample</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <a
+              href="/samples/Hanyang-Student-Intake-Template.xlsx"
+              download="Hanyang-Student-Intake-Template.xlsx"
+              onClick={(e) => e.stopPropagation()}
+              className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 hover:underline cursor-pointer"
+              title="Download empty Excel template for employee data intake"
+            >
+              <Download className="w-3 h-3" />
+              <span>Empty Template</span>
+            </a>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLoadSampleData();
+              }}
+              disabled={isLoading}
+              className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Load 60 Sample</span>
+            </button>
+          </div>
         </div>
         <input
           ref={excelInputRef}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Lock, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Lock, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, HelpCircle } from "lucide-react";
 
 interface LoginScreenProps {
   onUnlock: () => void;
@@ -20,7 +20,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onUnlock }) => {
     if (passphrase.trim() === REQUIRED_PASSPHRASE) {
       setError(null);
       try {
-        sessionStorage.setItem("achudami_auth", "unlocked");
+        sessionStorage.setItem("saemur_auth", "unlocked");
       } catch (e) {
         // Fallback if storage unavailable
       }
@@ -54,7 +54,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onUnlock }) => {
                 Restricted Access Portal
               </h1>
               <p className="text-xs text-zinc-400 mt-1">
-                Achudami • Hanyang Acceptance Generation Engine
+                Author: Saemur Rahman • Hanyang Acceptance Generation Engine
               </p>
             </div>
           </div>
@@ -91,6 +91,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onUnlock }) => {
                   )}
                 </button>
               </div>
+              <div className="mt-2.5 flex items-center gap-1.5 text-xs text-zinc-400">
+                <HelpCircle className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>
+                  Hint:{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPassphrase(REQUIRED_PASSPHRASE);
+                      if (error) setError(null);
+                    }}
+                    className="font-mono text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/50 underline-offset-2 transition cursor-pointer"
+                    title="Click to fill hint"
+                  >
+                    "{REQUIRED_PASSPHRASE}"
+                  </button>
+                </span>
+              </div>
             </div>
 
             {error && (
@@ -118,7 +135,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onUnlock }) => {
 
         {/* Security watermark */}
         <p className="text-center text-[11px] text-zinc-600 mt-6 font-mono">
-          Keystone Overseas Technical Placements • Sobhanbag, Dhanmondi
+          Author: Saemur Rahman
         </p>
       </div>
     </div>

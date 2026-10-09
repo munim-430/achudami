@@ -1,7 +1,8 @@
 {
-  "name": "achudami",
+  "name": "hanyang-certificate-engine",
   "version": "2.0.0",
   "description": "Pixel-Perfect Automated Certificate Generation Engine - Web Portal",
+  "author": "Saemur Rahman",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -40,17 +40,14 @@ export function applyVectorRedaction(page: any) {
   const h = page.getHeight();
   const white = rgb(1, 1, 1);
 
-  // Redaction rects: in pdf-lib (x, page.height - y1, width, height)
+  // Redaction rects: only redact dynamic student fields and bottom date
   const rects = [
-    { x: 330.0, y0: 212.0, y1: 230.0, w: 230.0 }, // student ID
-    { x: 330.0, y0: 252.0, y1: 271.0, w: 230.0 }, // name
+    { x: 325.0, y0: 212.0, y1: 230.0, w: 235.0 }, // student ID
+    { x: 325.0, y0: 252.0, y1: 271.0, w: 235.0 }, // name
     { x: 325.0, y0: 293.0, y1: 312.0, w: 235.0 }, // dob
-    { x: 330.0, y0: 328.0, y1: 368.0, w: 230.0 }, // course
-    { x: 330.0, y0: 375.0, y1: 394.0, w: 230.0 }, // period
-    { x: 203.0, y0: 432.0, y1: 447.0, w: 30.0 },  // korean semester
-    { x: 82.0, y0: 541.0, y1: 556.0, w: 30.0 },   // english semester
-    { x: 392.0, y0: 594.0, y1: 610.0, w: 29.0 },  // degree year
-    { x: 255.0, y0: 642.0, y1: 661.0, w: 90.0 },  // issue date
+    { x: 325.0, y0: 328.0, y1: 368.0, w: 235.0 }, // course & degree
+    { x: 325.0, y0: 375.0, y1: 394.0, w: 235.0 }, // period
+    { x: 255.0, y0: 642.0, y1: 661.0, w: 95.0 },  // issue date
   ];
 
   for (const r of rects) {
@@ -91,101 +88,57 @@ export async function generateSingleCertificate(
     applyVectorRedaction(page);
   }
 
-  // 1. Student ID No.
-  page.drawText(record.studentId, {
-    x: 336.75,
-    y: h - 224.55,
-    size: 12.95,
-    font: fontBold,
-    color: black,
-  });
-
-  // 2. Applicant Name (with auto-scaling if width > 220 pt)
-  let nameSize = 12.95;
-  const nameWidth = fontBold.widthOfTextAtSize(record.applicantName, nameSize);
   const maxWidth = 220.0;
-  if (nameWidth > maxWidth) {
-    nameSize = Math.round((nameSize * (maxWidth / nameWidth) * 0.98) * 100) / 100;
-  }
-  page.drawText(record.applicantName, {
-    x: 337.23,
-    y: h - 265.56,
-    size: nameSize,
-    font: fontBold,
-    color: black,
-  });
+
+  // Helper for auto-scaled bold text
+  const drawAutoScaledBold = (text: string, x: number, y: number, baseSize: number = 12.95) => {
+    if (!text) return;
+    let size = baseSize;
+    try {
+      const textWidth = fontBold.widthOfTextAtSize(text, size);
+      if (textWidth > maxWidth) {
+        size = Math.round((size * (maxWidth / textWidth) * 0.98) * 100) / 100;
+      }
+    } catch {
+      // Fallback if measurement throws
+    }
+    page.drawText(text, {
+      x,
+      y: h - y,
+      size,
+      font: fontBold,
+      color: black,
+    });
+  };
+
+  // 1. Student ID No.
+  drawAutoScaledBold(record.studentId, 336.75, 224.55);
+
+  // 2. Applicant Name (auto-scaled)
+  drawAutoScaledBold(record.applicantName, 337.23, 265.56);
 
   // 3. Date of Birth
-  page.drawText(record.dobFormatted, {
-    x: 330.76,
-    y: h - 306.44,
-    size: 12.95,
-    font: fontBold,
-    color: black,
-  });
+  drawAutoScaledBold(record.dobFormatted, 330.76, 306.44);
 
-  // 4. Applying Course Line 1
-  page.drawText(record.applyingCourse, {
-    x: 333.96,
-    y: h - 340.91,
-    size: 12.95,
-    font: fontBold,
-    color: black,
-  });
+  // 4. Applying Course Line 1 (auto-scaled)
+  drawAutoScaledBold(record.applyingCourse, 333.96, 340.91);
 
-  // 4b. Applying Course Line 2 (Degree conditional clause)
-  page.drawText(record.degreeProgram, {
-    x: 333.96,
-    y: h - 362.60,
-    size: 12.95,
-    font: fontBold,
-    color: black,
-  });
+  // 4b. Applying Course Line 2 (Degree conditional clause - auto-scaled)
+  drawAutoScaledBold(record.degreeProgram, 333.96, 362.60);
 
   // 5. Education Period
-  page.drawText(record.educationPeriod, {
-    x: 333.66,
-    y: h - 388.33,
-    size: 12.95,
-    font: fontBold,
-    color: black,
-  });
+  drawAutoScaledBold(record.educationPeriod, 333.66, 388.33);
 
-  // 6. Korean Semester Year
-  page.drawText(record.koreanSemesterYear, {
-    x: 205.37,
-    y: h - 443.54,
-    size: 11.99,
-    font: fontRegular,
-    color: black,
-  });
-
-  // 7. English Semester Year
-  page.drawText(record.englishSemesterYear, {
-    x: 83.59,
-    y: h - 552.26,
-    size: 11.99,
-    font: fontRegular,
-    color: black,
-  });
-
-  // 8. Degree Start Year
-  page.drawText(record.degreeStartYear, {
-    x: 393.47,
-    y: h - 606.62,
-    size: 11.99,
-    font: fontRegular,
-    color: black,
-  });
-
-  // 9. Issue Date
-  page.drawText(record.issueDate, {
-    x: 260.36,
-    y: h - 656.21,
-    size: 14.99,
-    font: fontRegular,
-    color: black,
-  });
+  // 6. Issue Date (Bottom)
+  if (record.issueDate) {
+    page.drawText(record.issueDate, {
+      x: 260.36,
+      y: h - 656.21,
+      size: 14.99,
+      font: fontRegular,
+      color: black,
+    });
+  }
 
   return await pdfDoc.save();
 }
