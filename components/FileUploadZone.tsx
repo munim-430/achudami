@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useRef } from "react";
-import { FileSpreadsheet, FileText, Upload, Sparkles, CheckCircle2, Download } from "lucide-react";
+import { FileSpreadsheet, FileText, Upload, Download } from "lucide-react";
+import { UniversityId, UNIVERSITIES } from "@/lib/types";
+import { generateSampleExcelBuffer } from "@/lib/excelParser";
 
 interface FileUploadZoneProps {
+  currentUniversity: UniversityId;
   onExcelLoaded: (buffer: ArrayBuffer, fileName: string) => void;
   onTemplateLoaded: (buffer: ArrayBuffer, fileName: string) => void;
   excelFileName: string | null;
@@ -12,6 +15,7 @@ interface FileUploadZoneProps {
 }
 
 export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
+  currentUniversity,
   onExcelLoaded,
   onTemplateLoaded,
   excelFileName,
@@ -20,6 +24,8 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
 }) => {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const templateInputRef = useRef<HTMLInputElement>(null);
+
+  const uConfig = UNIVERSITIES[currentUniversity];
 
   const handleExcelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,6 +53,26 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
     e.target.value = "";
   };
 
+  const handleDownloadSample = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const buffer = generateSampleExcelBuffer(currentUniversity);
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = uConfig.sampleExcelFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      alert("Error generating sample Excel: " + (err.message || String(err)));
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* 1. EXCEL DATA SOURCE */}
@@ -61,7 +87,7 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                <span>1. Upload Student Excel / CSV</span>
+                <span>1. Upload Student Excel ({uConfig.name})</span>
                 {excelFileName && (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
                     LOADED
@@ -80,16 +106,15 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
           <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[200px]">
             {excelFileName || "No file selected"}
           </span>
-          <a
-            href="/samples/Hanyang-Student-Intake-Template.xlsx"
-            download="Hanyang-Student-Intake-Template.xlsx"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            onClick={handleDownloadSample}
+            type="button"
             className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 hover:underline cursor-pointer"
-            title="Download empty Excel template for employee data intake"
+            title="Download formatted sample Excel intake template"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download Empty Intake Template (.xlsx)</span>
-          </a>
+            <span>Download {uConfig.name} Template (.xlsx)</span>
+          </button>
         </div>
         <input
           ref={excelInputRef}
@@ -114,11 +139,11 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <span>2. Template PDF</span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-800">
-                  {templateFileName ? "CUSTOM" : "HANYANG ACTIVE"}
+                  {templateFileName ? "CUSTOM" : `${uConfig.badge} DEFAULT`}
                 </span>
               </h3>
               <p className="text-xs text-zinc-400">
-                Pre-bundled Hanyang template active (or upload custom PDF)
+                Crisp vector base template active for {uConfig.name}
               </p>
             </div>
           </div>
@@ -127,7 +152,7 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
 
         <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/80">
           <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[200px]">
-            {templateFileName || "Hanyang Base Template (Active)"}
+            {templateFileName || `${uConfig.name} Official Base Template`}
           </span>
           <span className="text-[11px] text-zinc-500">
             Click to replace template

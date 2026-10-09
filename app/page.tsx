@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { Header } from "@/components/Header";
+import { UniversitySelector } from "@/components/UniversitySelector";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { StudentTable } from "@/components/StudentTable";
 import { PreviewModal } from "@/components/PreviewModal";
 import { LoginScreen } from "@/components/LoginScreen";
-import { StudentRecord, GenerationProgress } from "@/lib/types";
+import { StudentRecord, GenerationProgress, UniversityId, UNIVERSITIES } from "@/lib/types";
 import { parseExcelFile } from "@/lib/excelParser";
 import {
-  getDefaultTemplateBytes,
+  getTemplateBytes,
   getBundledFonts,
   generateSingleCertificate,
   generateBatchZip,
@@ -28,6 +29,9 @@ export default function HomePage() {
   // Authentication Gate State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+
+  // Multi-University State
+  const [currentUniversity, setCurrentUniversity] = useState<UniversityId>("hanyang");
 
   const [records, setRecords] = useState<StudentRecord[]>([]);
   const [excelFileName, setExcelFileName] = useState<string | null>(null);
@@ -63,23 +67,33 @@ export default function HomePage() {
     }
   }, []);
 
-  // Load initial clean template on mount (starts with zero student data)
+  // Load default template whenever university changes
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    async function initDefaults() {
+    async function loadUnivTemplate() {
       try {
-        // Load clean base template
-        const tplBytes = await getDefaultTemplateBytes();
+        setIsLoadingInitial(true);
+        const tplBytes = await getTemplateBytes(currentUniversity);
         setTemplateBytes(tplBytes);
+        setTemplateFileName(null);
+        setIsRawTemplate(false);
       } catch (err) {
-        console.error("Failed to load initial template:", err);
+        console.error("Failed to load university template:", err);
       } finally {
         setIsLoadingInitial(false);
       }
     }
-    initDefaults();
-  }, [isAuthenticated]);
+    loadUnivTemplate();
+  }, [isAuthenticated, currentUniversity]);
+
+  const handleUniversityChange = (id: UniversityId) => {
+    if (id === currentUniversity) return;
+    setCurrentUniversity(id);
+    // Reset parsed records or let user re-upload
+    setRecords([]);
+    setExcelFileName(null);
+  };
 
   const handleLock = () => {
     try {
@@ -103,7 +117,7 @@ export default function HomePage() {
   // Handle uploaded Excel
   const handleExcelLoaded = (buffer: ArrayBuffer, fileName: string) => {
     try {
-      const parsed = parseExcelFile(buffer);
+      const parsed = parseExcelFile(buffer, currentUniversity);
       if (parsed.length === 0) {
         alert("No valid student records found in the uploaded file.");
         return;
@@ -132,13 +146,14 @@ export default function HomePage() {
     setIsPreviewLoading(true);
 
     try {
-      const { boldFont, regularFont } = await getBundledFonts();
+      const { nanumBold, nanumRegular } = await getBundledFonts();
       const pdfBytes = await generateSingleCertificate(
         record,
         templateBytes,
-        boldFont,
-        regularFont,
-        isRawTemplate
+        nanumBold,
+        nanumRegular,
+        isRawTemplate,
+        currentUniversity
       );
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       if (previewPdfUrl) {
@@ -166,13 +181,14 @@ export default function HomePage() {
   const handleDownloadSingle = async (record: StudentRecord) => {
     if (!templateBytes) return;
     try {
-      const { boldFont, regularFont } = await getBundledFonts();
+      const { nanumBold, nanumRegular } = await getBundledFonts();
       const pdfBytes = await generateSingleCertificate(
         record,
         templateBytes,
-        boldFont,
-        regularFont,
-        isRawTemplate
+        nanumBold,
+        nanumRegular,
+        isRawTemplate,
+        currentUniversity
       );
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       downloadBlob(blob, record.filename);
@@ -198,6 +214,7 @@ export default function HomePage() {
         records,
         templateBytes,
         isRawTemplate,
+        currentUniversity,
         (current, total, name) => {
           setProgress({
             current,
@@ -209,7 +226,8 @@ export default function HomePage() {
         }
       );
 
-      const zipName = `Hanyang-University-2026-Winter-Certificates-${records.length}-Students.zip`;
+      const uBadge = UNIVERSITIES[currentUniversity].badge;
+      const zipName = `${uBadge}-Acceptance-Certificates-${records.length}-Students.zip`;
       downloadBlob(zipBlob, zipName);
 
       setProgress((prev) => ({
@@ -230,9 +248,15 @@ export default function HomePage() {
   const percentComplete =
     progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
+  const currentConfig = UNIVERSITIES[currentUniversity];
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
-      <Header onLock={handleLock} />
+      <Header
+        currentUniversity={currentUniversity}
+        onSelectUniversity={handleUniversityChange}
+        onLock={handleLock}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Top Hero Banner */}
@@ -241,10 +265,10 @@ export default function HomePage() {
             <div className="space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Zero Visual Drift Two-Pass Vector Engine</span>
+                <span>Multi-University Vector Engine • Subsetting Disabled</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                Hanyang University Acceptance Letter Automation
+                {currentConfig.name} Acceptance Letter Generator
               </h2>
               <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
                 Generates publication-ready PDF certificates with 100% typographic alignment,
@@ -280,6 +304,12 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+
+        {/* University Selector Cards */}
+        <UniversitySelector
+          currentUniversity={currentUniversity}
+          onSelectUniversity={handleUniversityChange}
+        />
 
         {/* Progress Bar (when active or complete) */}
         {(progress.isGenerating || progress.current > 0) && (
@@ -319,6 +349,7 @@ export default function HomePage() {
           </div>
 
           <FileUploadZone
+            currentUniversity={currentUniversity}
             onExcelLoaded={handleExcelLoaded}
             onTemplateLoaded={handleTemplateLoaded}
             excelFileName={excelFileName}
@@ -342,7 +373,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-zinc-400" />
             <span>
-              Engine powered by <code className="text-zinc-300">pdf-lib</code> + <code className="text-zinc-300">@pdf-lib/fontkit</code>. Tested for Korean glyphs with NanumGothic.
+              Engine powered by <code className="text-zinc-300">pdf-lib</code> + <code className="text-zinc-300">@pdf-lib/fontkit</code>. Korean Hangul & Serif typography preserved.
             </span>
           </div>
           <div>
