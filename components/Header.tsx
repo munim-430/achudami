@@ -1,7 +1,11 @@
 import React from "react";
-import { GraduationCap, ShieldCheck } from "lucide-react";
+import { GraduationCap, ShieldCheck, LogOut } from "lucide-react";
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onLock?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onLock }) => {
   return (
     <header className="border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -49,6 +53,17 @@ export const Header: React.FC = () => {
             </svg>
             <span className="hidden sm:inline">munim-430/achudami</span>
           </a>
+
+          {onLock && (
+            <button
+              onClick={onLock}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/60 bg-red-950/40 text-red-400 hover:bg-red-900/40 hover:text-red-300 text-xs transition"
+              title="Lock portal"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

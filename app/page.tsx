@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { StudentTable } from "@/components/StudentTable";
 import { PreviewModal } from "@/components/PreviewModal";
+import { LoginScreen } from "@/components/LoginScreen";
 import { StudentRecord, GenerationProgress } from "@/lib/types";
 import { parseExcelFile } from "@/lib/excelParser";
 import {
@@ -15,17 +16,19 @@ import {
   downloadBlob,
 } from "@/lib/pdfGenerator";
 import {
-  Download,
   Sparkles,
   Layers,
   CheckCircle2,
-  AlertCircle,
   FileArchive,
   Loader2,
   Info,
 } from "lucide-react";
 
 export default function HomePage() {
+  // Authentication Gate State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
+
   const [records, setRecords] = useState<StudentRecord[]>([]);
   const [excelFileName, setExcelFileName] = useState<string | null>(null);
   const [templateBytes, setTemplateBytes] = useState<ArrayBuffer | null>(null);
@@ -48,8 +51,22 @@ export default function HomePage() {
 
   const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
 
+  // Verify auth session on client mount
+  useEffect(() => {
+    try {
+      const isUnlocked = sessionStorage.getItem("achudami_auth") === "unlocked";
+      setIsAuthenticated(isUnlocked);
+    } catch {
+      setIsAuthenticated(false);
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
   // Load initial clean template & sample 60-student excel on mount
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     async function initDefaults() {
       try {
         // 1. Load clean base template
@@ -71,7 +88,26 @@ export default function HomePage() {
       }
     }
     initDefaults();
-  }, []);
+  }, [isAuthenticated]);
+
+  const handleLock = () => {
+    try {
+      sessionStorage.removeItem("achudami_auth");
+    } catch {
+      // Ignore
+    }
+    setIsAuthenticated(false);
+  };
+
+  // If still checking initial sessionStorage state, show blank dark canvas
+  if (!authChecked) {
+    return <div className="min-h-screen bg-zinc-950" />;
+  }
+
+  // If not authenticated, require passkey "Long Live Saem Sir"
+  if (!isAuthenticated) {
+    return <LoginScreen onUnlock={() => setIsAuthenticated(true)} />;
+  }
 
   // Handle uploaded Excel
   const handleExcelLoaded = (buffer: ArrayBuffer, fileName: string) => {
@@ -221,7 +257,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
-      <Header />
+      <Header onLock={handleLock} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Top Hero Banner */}
