@@ -63,26 +63,17 @@ export default function HomePage() {
     }
   }, []);
 
-  // Load initial clean template & sample 60-student excel on mount
+  // Load initial clean template on mount (starts with zero student data)
   useEffect(() => {
     if (!isAuthenticated) return;
 
     async function initDefaults() {
       try {
-        // 1. Load clean base template
+        // Load clean base template
         const tplBytes = await getDefaultTemplateBytes();
         setTemplateBytes(tplBytes);
-
-        // 2. Load 60-student sample Excel
-        const sampleExcelRes = await fetch("/samples/Hanyang-Student-Acceptance-List-Sample.xlsx");
-        if (sampleExcelRes.ok) {
-          const sampleBuf = await sampleExcelRes.arrayBuffer();
-          const parsed = parseExcelFile(sampleBuf);
-          setRecords(parsed);
-          setExcelFileName("Hanyang 2026 Winter - Student Acceptance List (60 students)");
-        }
       } catch (err) {
-        console.error("Failed to load initial defaults:", err);
+        console.error("Failed to load initial template:", err);
       } finally {
         setIsLoadingInitial(false);
       }
@@ -129,22 +120,6 @@ export default function HomePage() {
     setTemplateBytes(buffer);
     setTemplateFileName(fileName);
     setIsRawTemplate(true); // Custom uploaded PDFs undergo vector redaction pass
-  };
-
-  // Re-load bundled 60-student sample
-  const handleLoadSampleData = async () => {
-    setIsLoadingInitial(true);
-    try {
-      const sampleExcelRes = await fetch("/samples/Hanyang-Student-Acceptance-List-Sample.xlsx");
-      const sampleBuf = await sampleExcelRes.arrayBuffer();
-      const parsed = parseExcelFile(sampleBuf);
-      setRecords(parsed);
-      setExcelFileName("Hanyang 2026 Winter - Student Acceptance List (60 students)");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoadingInitial(false);
-    }
   };
 
   // Single Student Preview Handler
@@ -348,7 +323,6 @@ export default function HomePage() {
             onTemplateLoaded={handleTemplateLoaded}
             excelFileName={excelFileName}
             templateFileName={templateFileName}
-            onLoadSampleData={handleLoadSampleData}
             isLoading={isLoadingInitial}
           />
         </section>

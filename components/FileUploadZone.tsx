@@ -8,7 +8,6 @@ interface FileUploadZoneProps {
   onTemplateLoaded: (buffer: ArrayBuffer, fileName: string) => void;
   excelFileName: string | null;
   templateFileName: string | null;
-  onLoadSampleData: () => void;
   isLoading: boolean;
 }
 
@@ -17,7 +16,6 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   onTemplateLoaded,
   excelFileName,
   templateFileName,
-  onLoadSampleData,
   isLoading,
 }) => {
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -79,33 +77,19 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
         </div>
 
         <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/80">
-          <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[150px]">
+          <span className="text-zinc-300 font-mono text-[11px] truncate max-w-[200px]">
             {excelFileName || "No file selected"}
           </span>
-          <div className="flex items-center gap-3">
-            <a
-              href="/samples/Hanyang-Student-Intake-Template.xlsx"
-              download="Hanyang-Student-Intake-Template.xlsx"
-              onClick={(e) => e.stopPropagation()}
-              className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 hover:underline cursor-pointer"
-              title="Download empty Excel template for employee data intake"
-            >
-              <Download className="w-3 h-3" />
-              <span>Empty Template</span>
-            </a>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onLoadSampleData();
-              }}
-              disabled={isLoading}
-              className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
-            >
-              <Sparkles className="w-3 h-3" />
-              <span>Load 60 Sample</span>
-            </button>
-          </div>
+          <a
+            href="/samples/Hanyang-Student-Intake-Template.xlsx"
+            download="Hanyang-Student-Intake-Template.xlsx"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 hover:underline cursor-pointer"
+            title="Download empty Excel template for employee data intake"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download Empty Intake Template (.xlsx)</span>
+          </a>
         </div>
         <input
           ref={excelInputRef}

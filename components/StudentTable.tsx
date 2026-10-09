@@ -64,10 +64,22 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/60 font-mono text-zinc-300">
-            {filtered.length === 0 ? (
+            {records.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-16 text-center text-zinc-500 font-sans">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <GraduationCap className="w-8 h-8 text-zinc-700" />
+                    <p className="text-sm text-zinc-400">No student records loaded yet.</p>
+                    <p className="text-xs text-zinc-600 max-w-sm">
+                      Download the intake template above, fill in applicant details, and upload the Excel or CSV file.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-12 text-center text-zinc-500 font-sans">
-                  No matching student records found.
+                  No matching student records found for "{searchTerm}".
                 </td>
               </tr>
             ) : (
