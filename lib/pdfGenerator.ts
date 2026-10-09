@@ -77,8 +77,9 @@ export async function generateSingleCertificate(
   const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
   pdfDoc.registerFontkit(fontkit);
 
-  const fontBold = await pdfDoc.embedFont(boldFontBytes, { subset: true });
-  const fontRegular = await pdfDoc.embedFont(regularFontBytes, { subset: true });
+  // Embed complete fonts without subsetting to avoid glyph outline / CMap dropout in PDF viewers
+  const fontBold = await pdfDoc.embedFont(boldFontBytes, { subset: false });
+  const fontRegular = await pdfDoc.embedFont(regularFontBytes, { subset: false });
 
   const page = pdfDoc.getPages()[0];
   const h = page.getHeight();
